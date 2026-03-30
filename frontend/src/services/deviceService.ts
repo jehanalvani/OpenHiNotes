@@ -334,17 +334,22 @@ class DeviceService {
 
     while (received < fileSize && (Date.now() - startTime < timeout)) {
       try {
+        // Many devices respond with command 5 (TRANSFER_FILE) during GET_FILE_BLOCK (13)
         const response = await this.receiveResponse(seqId, 5000, COMMANDS.GET_FILE_BLOCK);
         if (response.body.length === 0) break;
 
         chunks.push(new Uint8Array(response.body));
         received += response.body.length;
 
+        if (received % (128 * 1024) === 0 || received === fileSize) {
+           console.log('[OpenHiNotes] Progress: %d/%d bytes', received, fileSize);
+        }
+
         if (onProgress && fileSize > 0) {
           onProgress(Math.min(100, Math.round((received / fileSize) * 100)));
         }
       } catch (err) {
-        // If we timeout but have almost everything, some devices don't send the last bit of padding
+        console.warn('[OpenHiNotes] Download loop error:', err);
         if (received > 0 && received >= fileSize - 1024) break; 
         throw err;
       }
@@ -416,13 +421,16 @@ class DeviceService {
     const deadline = Date.now() + timeout;
 
     while (Date.now() < deadline) {
-      // Small read to feel out the pipe
-      const result = await this.device.transferIn(ENDPOINT_IN, 65536);
-      if (result.status === 'ok' && result.data) {
-        this.receiveBuffer = concatBuffers(
-          this.receiveBuffer,
-          new Uint8Array(result.data.buffer),
-        );
+      try {
+        const result = await this.device.transferIn(ENDPOINT_IN, 65536);
+        if (result.status === 'ok' && result.data) {
+          this.receiveBuffer = concatBuffers(
+            this.receiveBuffer,
+            new Uint8Array(result.data.buffer),
+          );
+        }
+      } catch (err) {
+        // Continue, might be a transient timeout
       }
 
       // Try to extract a complete packet
@@ -433,7 +441,7 @@ class DeviceService {
 
       await new Promise((r) => setTimeout(r, 10));
     }
-    throw new Error(`Timeout waiting for response to seq ${expectedSeqId}`);
+    throw new Error(`Timeout waiting for resp (seq ${expectedSeqId}, cmd ${expectedCommandId})`);
   }
 
   private tryParsePacket(
@@ -441,9 +449,7 @@ class DeviceService {
     expectedCommandId?: number
   ): { commandId: number; body: Uint8Array } | null {
     while (this.receiveBuffer.length >= 12) {
-      // Find sync bytes
       if (this.receiveBuffer[0] !== 0x12 || this.receiveBuffer[1] !== 0x34) {
-        // Skip one byte and retry
         this.receiveBuffer = this.receiveBuffer.slice(1);
         continue;
       }
@@ -456,16 +462,28 @@ class DeviceService {
       const bodyLen = lengthField & 0x00ffffff;
       const totalLen = 12 + bodyLen + checksumLen;
 
-      if (this.receiveBuffer.length < totalLen) return null; // need more data
+      if (this.receiveBuffer.length < totalLen) return null;
 
       const body = this.receiveBuffer.slice(12, 12 + bodyLen);
       this.receiveBuffer = this.receiveBuffer.slice(totalLen);
 
-      // In streaming mode, some packets might have seqId 0 or the commandId we expect
-      if (seqId === expectedSeqId || (expectedCommandId !== undefined && commandId === expectedCommandId)) {
+      console.debug('[OpenHiNotes] RECV pkt: cmd=%d, seq=%d, len=%d', commandId, seqId, bodyLen);
+
+      // Match logic: 
+      // 1. Precise sequence match
+      // 2. Command match (for streaming)
+      // 3. Alias match: response for GET_FILE_BLOCK(13) is often TRANSFER_FILE(5)
+      const isCmdMatch = expectedCommandId !== undefined && (
+        commandId === expectedCommandId || 
+        (expectedCommandId === COMMANDS.GET_FILE_BLOCK && commandId === COMMANDS.TRANSFER_FILE)
+      );
+
+      if (seqId === expectedSeqId || isCmdMatch) {
         return { commandId, body };
       }
-      // Non-matching seqId — discard and keep looking
+      
+      console.log('[OpenHiNotes] Discarding non-matching packet: cmd=%d, seq=%d (expected seq=%d, cmd=%s)', 
+          commandId, seqId, expectedSeqId, expectedCommandId);
     }
     return null;
   }
