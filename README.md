@@ -185,6 +185,10 @@ The Vite dev server proxies `/api` requests to `http://localhost:8000` automatic
 | Device     | WebUSB API (browser-native)                                       |
 | Deployment | Docker Compose, Caddy 2                                           |
 
+## Acknowledgments
+
+This project is a full rewrite of [HiDock Next](https://github.com/HiDock/hidock-next), the original open-source web client for HiDock recording devices. The WebUSB protocol implementation and device communication layer are derived from that project. OpenHiNotes replaces the client-only architecture with a FastAPI backend, adds server-side transcription, authentication, summary templates, and LLM chat capabilities.
+
 ## License
 
 See [LICENSE](LICENSE) for details.
