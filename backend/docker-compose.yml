@@ -1,0 +1,44 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: openhinotes
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/openhinotes
+      SECRET_KEY: dev-secret-key-change-in-production
+      WHISPERX_API_URL: http://whisperx:8000
+      WHISPERX_MODEL: large-v3
+      LLM_API_URL: http://ollama:11434/v1
+      LLM_API_KEY: ""
+      LLM_MODEL: gpt-3.5-turbo
+      CORS_ORIGINS: "*"
+      ADMIN_EMAIL: admin@openhinotes.local
+      ADMIN_PASSWORD: admin
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./app:/app/app
+      - uploads:/app/uploads
+
+volumes:
+  postgres_data:
+  uploads:

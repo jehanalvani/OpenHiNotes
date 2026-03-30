@@ -1,0 +1,96 @@
+import httpx
+import json
+from typing import AsyncGenerator, Optional, List, Dict
+from app.config import settings
+from app.schemas.chat import ChatMessage
+
+
+class LLMService:
+    """Service for LLM operations."""
+
+    @staticmethod
+    async def create_summary(
+        transcript_text: str, prompt_template: str, custom_prompt: Optional[str] = None
+    ) -> tuple[str, str]:
+        """Create a summary from a transcript using a template or custom prompt."""
+        # Use custom prompt if provided, otherwise use template
+        if custom_prompt:
+            final_prompt = custom_prompt.replace("{{transcript}}", transcript_text)
+        else:
+            final_prompt = prompt_template.replace("{{transcript}}", transcript_text)
+
+        messages = [
+            {"role": "system", "content": "You are a helpful assistant that summarizes transcripts."},
+            {"role": "user", "content": final_prompt},
+        ]
+
+        url = f"{settings.llm_api_url}/chat/completions"
+        headers = {}
+        if settings.llm_api_key:
+            headers["Authorization"] = f"Bearer {settings.llm_api_key}"
+
+        payload = {
+            "model": settings.llm_model,
+            "messages": messages,
+            "temperature": 0.7,
+            "stream": False,
+        }
+
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            response = await client.post(url, json=payload, headers=headers)
+
+        if response.status_code != 200:
+            raise Exception(f"LLM API error: {response.status_code} - {response.text}")
+
+        result = response.json()
+        summary_text = result["choices"][0]["message"]["content"]
+        model_used = result.get("model", settings.llm_model)
+
+        return summary_text, model_used
+
+    @staticmethod
+    async def chat_completion(
+        messages: List[ChatMessage],
+        model: Optional[str] = None,
+        temperature: float = 0.7,
+        max_tokens: Optional[int] = None,
+    ) -> AsyncGenerator[str, None]:
+        """Stream chat completion responses."""
+        model_to_use = model or settings.llm_model
+
+        # Convert ChatMessage objects to dicts
+        message_dicts = [{"role": m.role, "content": m.content} for m in messages]
+
+        url = f"{settings.llm_api_url}/chat/completions"
+        headers = {}
+        if settings.llm_api_key:
+            headers["Authorization"] = f"Bearer {settings.llm_api_key}"
+
+        payload = {
+            "model": model_to_use,
+            "messages": message_dicts,
+            "temperature": temperature,
+            "stream": True,
+        }
+
+        if max_tokens:
+            payload["max_tokens"] = max_tokens
+
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            async with client.stream("POST", url, json=payload, headers=headers) as response:
+                if response.status_code != 200:
+                    error_text = await response.atext()
+                    raise Exception(f"LLM API error: {response.status_code} - {error_text}")
+
+                async for line in response.aiter_lines():
+                    if line.startswith("data: "):
+                        data_str = line[6:]
+                        if data_str == "[DONE]":
+                            break
+                        try:
+                            data = json.loads(data_str)
+                            delta = data.get("choices", [{}])[0].get("delta", {})
+                            if "content" in delta and delta["content"]:
+                                yield delta["content"]
+                        except json.JSONDecodeError:
+                            continue

@@ -1,0 +1,21 @@
+# Development Caddyfile
+# WebUSB requires HTTPS, so Caddy provides TLS even locally
+
+:443 {
+	tls internal
+
+	# API routes -> backend
+	handle /api/* {
+		reverse_proxy backend:8000
+	}
+
+	# Everything else -> frontend dev server
+	handle {
+		reverse_proxy frontend:5173
+	}
+}
+
+# Redirect HTTP to HTTPS
+:80 {
+	redir https://{host}{uri} permanent
+}
