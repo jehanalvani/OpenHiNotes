@@ -391,11 +391,12 @@ class DeviceService {
     const chunks: Uint8Array[] = [];
     let received = 0;
     const startTime = Date.now();
-    const timeout = 300000; // 5 minutes per file
     let consecutiveTimeouts = 0;
-    const maxConsecutiveTimeouts = 20; // Allow up to 20 timeouts (~100s) before giving up
+    const maxConsecutiveTimeouts = 100; // Allow up to 100 timeouts of no data before giving up
 
-    while (received < fileSize && (Date.now() - startTime < timeout)) {
+    // No hard time limit — as long as data keeps flowing the download continues.
+    // The consecutive timeout counter handles true stalls.
+    while (received < fileSize) {
       try {
         // Accept packets matching our seqId OR matching the stream command
         // Also accept TRANSFER_FILE (5) when expecting GET_FILE_BLOCK (13) and vice versa
