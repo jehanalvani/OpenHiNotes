@@ -1,0 +1,130 @@
+from fastapi import APIRouter, HTTPException, status, Depends, Query
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
+from app.database import get_db
+from app.schemas.template import (
+    SummaryTemplateCreate,
+    SummaryTemplateResponse,
+    SummaryTemplateUpdate,
+)
+from app.models.template import SummaryTemplate
+from app.models.user import User
+from app.dependencies import get_current_user, require_admin
+import uuid
+
+router = APIRouter(prefix="/templates", tags=["templates"])
+
+
+@router.get("", response_model=list[SummaryTemplateResponse])
+async def list_templates(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=100),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """List active summary templates."""
+    result = await db.execute(
+        select(SummaryTemplate)
+        .where(SummaryTemplate.is_active == True)
+        .offset(skip)
+        .limit(limit)
+    )
+    templates = result.scalars().all()
+    return templates
+
+
+@router.post("", response_model=SummaryTemplateResponse, status_code=status.HTTP_201_CREATED)
+async def create_template(
+    template_create: SummaryTemplateCreate,
+    current_user: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Create a new summary template (admin only)."""
+    template = SummaryTemplate(
+        name=template_create.name,
+        description=template_create.description,
+        prompt_template=template_create.prompt_template,
+        created_by=current_user.id,
+        is_active=template_create.is_active,
+    )
+    db.add(template)
+    await db.commit()
+    await db.refresh(template)
+    return template
+
+
+@router.get("/{template_id}", response_model=SummaryTemplateResponse)
+async def get_template(
+    template_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get a summary template by ID."""
+    result = await db.execute(
+        select(SummaryTemplate).where(SummaryTemplate.id == template_id)
+    )
+    template = result.scalars().first()
+
+    if not template:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Template not found",
+        )
+
+    return template
+
+
+@router.patch("/{template_id}", response_model=SummaryTemplateResponse)
+async def update_template(
+    template_id: uuid.UUID,
+    template_update: SummaryTemplateUpdate,
+    current_user: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Update a summary template (admin only)."""
+    result = await db.execute(
+        select(SummaryTemplate).where(SummaryTemplate.id == template_id)
+    )
+    template = result.scalars().first()
+
+    if not template:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Template not found",
+        )
+
+    if template_update.name is not None:
+        template.name = template_update.name
+    if template_update.description is not None:
+        template.description = template_update.description
+    if template_update.prompt_template is not None:
+        template.prompt_template = template_update.prompt_template
+    if template_update.is_active is not None:
+        template.is_active = template_update.is_active
+
+    await db.commit()
+    await db.refresh(template)
+    return template
+
+
+@router.delete("/{template_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_template(
+    template_id: uuid.UUID,
+    current_user: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete/deactivate a summary template (admin only)."""
+    result = await db.execute(
+        select(SummaryTemplate).where(SummaryTemplate.id == template_id)
+    )
+    template = result.scalars().first()
+
+    if not template:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Template not found",
+        )
+
+    # Soft delete by deactivating
+    template.is_active = False
+    await db.commit()

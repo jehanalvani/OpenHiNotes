@@ -1,0 +1,20 @@
+# Production Caddyfile
+# Replace YOUR_DOMAIN with your actual domain, or use :443 with tls internal for LAN
+
+:443 {
+	tls internal
+
+	# API routes -> backend
+	handle /api/* {
+		reverse_proxy backend:8000
+	}
+
+	# Static frontend assets
+	handle {
+		reverse_proxy frontend:80
+	}
+}
+
+:80 {
+	redir https://{host}{uri} permanent
+}

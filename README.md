@@ -1,119 +1,206 @@
 # OpenHiNotes
 
-**Local-first audio transcription for HiDock devices.**
-
-> 🔱 Fork of [sgeraldes/hidock-next](https://github.com/sgeraldes/hidock-next) — only the web app is retained. The desktop app, Electron app, meeting recorder, and audio-insights tools have been removed. The goal is to maintain a lightweight, browser-based tool for transcribing audio locally without depending on any specific cloud provider.
+A web application for managing, transcribing, and summarizing audio recordings from HiDock devices. Connect your HiDock via WebUSB, transcribe recordings using [VoxBench](https://github.com/ghecko/VoxBench), rename speakers from diarization, and chat with an LLM about your transcripts.
 
 ## Features
 
-- **🎤 HiDock Device Integration** — Connect your HiDock H1, H1E, P1, or P1 Mini via WebUSB to browse and download recordings directly in the browser.
-- **📝 Multi-Provider Transcription** — Choose between:
-  - **Local WhisperX** — Self-hosted, OpenAI-compatible transcription (e.g., [whisperx-api-server](https://github.com/Nyralei/whisperx-api-server))
-  - **OpenAI Cloud** — Official OpenAI Whisper API
-  - **Google Gemini** — Transcription + AI-powered insight extraction (summary, sentiment, action items)
-- **🎵 Audio Upload & Recording** — Upload audio files or record directly in the browser.
-- **📋 Copy & Export** — Copy transcriptions to clipboard or export results.
+- **WebUSB device connection** — browse, download, and manage audio files directly from HiDock H1, H1E, P1, and P1 Mini devices in the browser
+- **Server-side transcription** — audio is uploaded to the FastAPI backend, which proxies requests to a [VoxBench](https://github.com/ghecko/VoxBench) API server (OpenAI-compatible)
+- **VoxBench Job Mode** — async transcription with real-time progress streaming via SSE for long audio files
+- **Speaker diarization & renaming** — color-coded speakers with inline click-to-edit renaming
+- **Summary templates** — admins define reusable prompt templates; users generate summaries from any transcription with one click
+- **Transcribe & Summarize combo** — run both operations directly from the recordings list
+- **LLM chat** — send any transcript as context to an OpenAI-compatible chat endpoint and ask questions about it (streaming responses with typing animation)
+- **Authentication & roles** — JWT-based auth with admin and user roles
+- **Dark mode** — system-aware theme with manual toggle, glass-morphism UI
+- **Fully dockerized** — four-service Docker Compose setup with PostgreSQL, FastAPI, Vite, and Caddy (HTTPS required for WebUSB)
+
+## Architecture
+
+```
+┌──────────────┐       ┌──────────────┐       ┌──────────────────┐
+│   Browser    │ WebUSB│   HiDock     │       │  VoxBench API    │
+│  (React +   │◄─────►│   Device     │       │  Server          │
+│   Vite)     │       └──────────────┘       └────────▲─────────┘
+│              │                                      │
+│  uploads audio via /api                             │
+│              │                                      │
+└──────┬───────┘                                      │
+       │ HTTPS                                        │
+┌──────▼───────┐       ┌──────────────┐               │
+│    Caddy     │──────►│   FastAPI    │───────────────┘
+│  (reverse    │       │   Backend    │
+│   proxy)     │       │              │───────► LLM API (chat/summaries)
+└──────────────┘       └──────┬───────┘
+                              │
+                       ┌──────▼───────┐
+                       │  PostgreSQL  │
+                       └──────────────┘
+```
 
 ## Quick Start
 
 ### Prerequisites
 
-- **Node.js** 18+ and **npm**
-- A transcription server (for local transcription):
-  - [whisperx-api-server](https://github.com/Nyralei/whisperx-api-server) — recommended
-  - Any OpenAI-compatible `/v1/audio/transcriptions` endpoint
-  - Or use cloud providers (OpenAI, Gemini) with an API key
+- Docker and Docker Compose
+- A [VoxBench](https://github.com/ghecko/VoxBench) server for transcription
+- Optionally, an OpenAI-compatible LLM endpoint for chat and summaries (e.g. Ollama, LM Studio, OpenAI)
 
-### Install & Run
+### Setup
 
 ```bash
 # Clone the repository
-git clone https://github.com/YOUR_USERNAME/OpenHiNotes.git
+git clone https://github.com/ghecko/OpenHiNotes.git
 cd OpenHiNotes
 
-# Install dependencies
-cd apps/web
-npm install
+# Copy and edit environment variables
+cp .env.example .env
+# Edit .env with your VoxBench URL, LLM endpoint, secret key, etc.
 
-# Start the development server
-npm run dev
+# Start all services
+docker compose up --build
 ```
 
-Then open [http://localhost:5173](http://localhost:5173) in your browser.
+Open **https://localhost:8443** in your browser (accept the self-signed certificate). Caddy provides HTTPS, which is required for WebUSB to work.
 
-### Configure a Provider
+### Default Admin Account
 
-1. Go to **Settings** → **Transcription Provider**
-2. Select your provider (Local WhisperX, OpenAI Cloud, or Google Gemini)
-3. Enter the server URL and/or API key
-4. Click **Test Connection** to verify
-5. Save settings
+| Field    | Value                      |
+|----------|----------------------------|
+| Email    | `admin@openhinotes.local`  |
+| Password | `admin`                    |
 
-## Docker Support
+Change these via the `ADMIN_EMAIL` and `ADMIN_PASSWORD` environment variables before first startup.
 
-OpenHiNotes includes both development and production Docker setups. **Caddy** is used in both environments because the **WebUSB API (used to connect to HiDock devices) strictly requires a secure context (HTTPS)** if you are accessing the app from anywhere other than `localhost`.
+## Configuration
 
-### Production Setup
+All configuration is done through environment variables (see [`.env.example`](.env.example)):
 
-To run a highly-optimized, compiled build of the app using a multi-stage Docker build:
+| Variable               | Description                                      | Default                                |
+|------------------------|--------------------------------------------------|----------------------------------------|
+| `SECRET_KEY`           | JWT signing key — change in production           | `change-me-...`                        |
+| `ADMIN_EMAIL`          | Initial admin account email                      | `admin@openhinotes.local`              |
+| `ADMIN_PASSWORD`       | Initial admin account password                   | `admin`                                |
+| `VOXBENCH_API_URL`     | URL of the VoxBench transcription API            | `http://voxbench:8000`                 |
+| `VOXBENCH_MODEL`       | Whisper model to use                             | `large-v3`                             |
+| `VOXBENCH_VERIFY_SSL`  | SSL verification for VoxBench API calls          | `true`                                 |
+| `LLM_API_URL`          | OpenAI-compatible chat completions endpoint      | `http://host.docker.internal:11434/v1` |
+| `LLM_API_KEY`          | API key for the LLM endpoint (if required)       | *(empty)*                              |
+| `LLM_MODEL`            | Model name for chat and summaries                | `gpt-3.5-turbo`                        |
+| `LLM_VERIFY_SSL`       | SSL verification for LLM API calls               | `true`                                 |
+| `CORS_ORIGINS`         | Allowed CORS origins                             | `*`                                    |
 
-```bash
-# Build and run the production container in the background
-docker-compose -f docker-compose.prod.yml up -d --build
-```
+### SSL Verification
 
-This will serve the production build on port 80. *If you need local network HTTPS (for WebUSB on other devices), you can pass a custom `Caddyfile` in the `docker-compose.prod.yml` to override the default `:80` configuration and use `tls internal`.*
-
-### Development Setup (Hot-Reloading)
-
-For easy local development with live hot-reloading (changes to `apps/web/src` update instantly without a rebuild):
-
-```bash
-# Start the web app and Caddy dev proxy in the background
-docker-compose up -d
-
-# View live logs
-docker-compose logs -f web
-```
-
-- Access via HTTP: [http://localhost:5173](http://localhost:5173) (Direct Vite server)
-- Access via HTTPS: [https://localhost](https://localhost) (Proxied via Caddy)
-
-*Note: If you want to access the dev app from another device on your local network (e.g., `192.168.x.x`) and still use WebUSB, check the `Caddyfile` in the root folder for instructions on enabling local HTTPS.*
+The `*_VERIFY_SSL` settings accept three values:
+- `"true"` — use the system CA store (default)
+- `"false"` — disable SSL verification (for self-signed certs in development)
+- A file path — use a custom CA bundle (e.g. `/etc/ssl/certs/ca-certificates.crt`)
 
 ## Project Structure
 
 ```
 OpenHiNotes/
-├── apps/web/          # React + Vite web application
+├── backend/                  # Python FastAPI application
+│   ├── app/
+│   │   ├── models/           # SQLAlchemy ORM models
+│   │   ├── schemas/          # Pydantic request/response schemas
+│   │   ├── routers/          # API route handlers
+│   │   ├── services/         # Business logic (auth, transcription, LLM)
+│   │   ├── main.py           # FastAPI app entry point
+│   │   ├── config.py         # Settings from environment
+│   │   ├── database.py       # Async SQLAlchemy setup
+│   │   └── dependencies.py   # Auth dependencies
+│   ├── alembic/              # Database migrations
+│   ├── requirements.txt
+│   └── Dockerfile
+├── frontend/                 # React + Vite + TypeScript application
 │   ├── src/
-│   │   ├── components/    # Reusable UI components
-│   │   ├── pages/         # Dashboard, Recordings, Transcription, Settings
-│   │   ├── services/      # Transcription service & providers
-│   │   │   └── providers/ # WhisperX, OpenAI, Gemini provider implementations
-│   │   ├── store/         # Zustand state management
-│   │   ├── types/         # TypeScript type definitions
-│   │   └── utils/         # Utility functions
-│   └── package.json
-├── run-web.sh         # Convenience launcher (Linux/macOS)
-├── run-web.bat        # Convenience launcher (Windows)
-└── Makefile           # Build targets
+│   │   ├── api/              # Backend API client modules
+│   │   ├── components/       # Reusable UI components
+│   │   ├── hooks/            # React hooks (device connection)
+│   │   ├── pages/            # Route pages
+│   │   ├── services/         # WebUSB device protocol
+│   │   ├── store/            # Zustand state management
+│   │   └── types/            # TypeScript type definitions
+│   ├── package.json
+│   └── Dockerfile
+├── docker-compose.yml        # Development orchestration
+├── docker-compose.prod.yml   # Production orchestration
+├── Caddyfile                 # Reverse proxy with HTTPS
+└── .env.example              # Environment template
 ```
+
+## API Endpoints
+
+| Method | Path                                    | Auth     | Description                              |
+|--------|-----------------------------------------|----------|------------------------------------------|
+| POST   | `/api/auth/register`                    | Public   | Create a new user account                |
+| POST   | `/api/auth/login`                       | Public   | Obtain a JWT token                       |
+| GET    | `/api/auth/me`                          | User     | Get current user profile                 |
+| GET    | `/api/users`                            | Admin    | List all users                           |
+| PATCH  | `/api/users/{id}/role`                  | Admin    | Change a user's role                     |
+| POST   | `/api/transcriptions/upload`            | User     | Upload audio and transcribe              |
+| POST   | `/api/transcriptions/upload-stream`     | User     | Upload and transcribe with SSE progress  |
+| GET    | `/api/transcriptions`                   | User     | List transcriptions                      |
+| GET    | `/api/transcriptions/{id}`              | User     | Get a single transcription               |
+| PATCH  | `/api/transcriptions/{id}/speakers`     | User     | Rename speakers                          |
+| PATCH  | `/api/transcriptions/{id}/notes`        | User     | Update notes                             |
+| DELETE | `/api/transcriptions/{id}`              | User     | Delete a transcription                   |
+| GET    | `/api/templates`                        | User     | List summary templates                   |
+| POST   | `/api/templates`                        | Admin    | Create a summary template                |
+| PATCH  | `/api/templates/{id}`                   | Admin    | Update a template                        |
+| DELETE | `/api/templates/{id}`                   | Admin    | Delete a template                        |
+| POST   | `/api/summaries`                        | User     | Generate a summary                       |
+| GET    | `/api/summaries`                        | User     | List summaries for a transcription       |
+| POST   | `/api/chat`                             | User     | Chat with LLM (streaming SSE)           |
+| GET    | `/api/health`                           | Public   | Health check                             |
+
+## Supported Devices
+
+| Device         | Product IDs          |
+|----------------|----------------------|
+| HiDock H1      | `0xAF0C`             |
+| HiDock H1E     | `0xAF0D`, `0xB00D`   |
+| HiDock P1      | `0xAF0E`, `0xB00E`   |
+| HiDock P1 Mini | `0xAF0F`             |
 
 ## Development
 
+To run services individually without Docker:
+
 ```bash
-cd apps/web
-npm run dev          # Start dev server
-npm run build        # Production build
-npm run test         # Run tests
-npm run lint         # Lint code
+# Backend
+cd backend
+python -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+# Set DATABASE_URL to a local PostgreSQL instance
+uvicorn app.main:app --reload --port 8000
+
+# Frontend
+cd frontend
+npm install
+npm run dev
 ```
+
+The Vite dev server proxies `/api` requests to `http://localhost:8000` automatically.
+
+## Tech Stack
+
+| Layer      | Technology                                                        |
+|------------|-------------------------------------------------------------------|
+| Frontend   | React 18, Vite 5, TypeScript, Tailwind CSS 3, Zustand, React Router 6 |
+| Backend    | Python 3.11, FastAPI, SQLAlchemy 2 (async), Alembic, Pydantic    |
+| Database   | PostgreSQL 16                                                     |
+| Auth       | JWT (python-jose), bcrypt (passlib)                               |
+| Device     | WebUSB API (browser-native)                                       |
+| Transcription | [VoxBench](https://github.com/ghecko/VoxBench) (OpenAI-compatible) |
+| Deployment | Docker Compose, Caddy 2                                           |
+
+## Acknowledgments
+
+This project is a full rewrite of [HiDock Next](https://github.com/HiDock/hidock-next), the original open-source web client for HiDock recording devices. The WebUSB protocol implementation and device communication layer are derived from that project. OpenHiNotes replaces the client-only architecture with a FastAPI backend, adds server-side transcription via [VoxBench](https://github.com/ghecko/VoxBench), authentication, summary templates, and LLM chat capabilities.
 
 ## License
 
-MIT License — see [LICENSE](LICENSE) for details.
-
-## Credits
-
-This project is a fork of [HiDock Next](https://github.com/sgeraldes/hidock-next) by sgeraldes, adapted for local-first transcription workflows.
+See [LICENSE](LICENSE) for details.

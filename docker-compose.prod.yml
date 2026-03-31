@@ -1,26 +1,67 @@
-version: '3.8'
+version: "3.8"
 
 services:
-  web-prod:
-    build:
-      context: ./apps/web
-      dockerfile: Dockerfile
-    image: openhinotes:production
-    container_name: openhinotes-prod
+  db:
+    image: postgres:16-alpine
     restart: unless-stopped
+    environment:
+      POSTGRES_DB: openhinotes
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.prod
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:${POSTGRES_PASSWORD:-postgres}@db:5432/openhinotes
+      SECRET_KEY: ${SECRET_KEY}
+      VOXBENCH_API_URL: ${VOXBENCH_API_URL:-http://voxbench:8000}
+      VOXBENCH_MODEL: ${VOXBENCH_MODEL:-large-v3}
+      VOXBENCH_VERIFY_SSL: ${VOXBENCH_VERIFY_SSL:-true}
+      LLM_API_URL: ${LLM_API_URL}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_MODEL: ${LLM_MODEL:-gpt-3.5-turbo}
+      LLM_VERIFY_SSL: ${LLM_VERIFY_SSL:-true}
+      ADMIN_EMAIL: ${ADMIN_EMAIL}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+      CORS_ORIGINS: ${CORS_ORIGINS:-*}
+    volumes:
+      - uploads_data:/app/uploads
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.prod
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      - frontend
+      - backend
     ports:
       - "80:80"
       - "443:443"
     volumes:
-      # Optional: To enable HTTPS for specific local IP (WebUSB requirement),
-      # you can override the internal Caddyfile with a custom host Caddyfile 
-      # by uncommenting the line below:
-      # - ./Caddyfile.prod:/etc/caddy/Caddyfile
-      
-      # Persist Caddy's auto-generated TLS certificates
-      - caddy_data_prod:/data
-      - caddy_config_prod:/config
+      - ./Caddyfile.prod:/etc/caddy/Caddyfile
+      - caddy_data:/data
+      - caddy_config:/config
 
 volumes:
-  caddy_data_prod:
-  caddy_config_prod:
+  postgres_data:
+  uploads_data:
+  caddy_data:
+  caddy_config:
