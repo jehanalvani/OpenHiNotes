@@ -6,6 +6,9 @@ interface ChatRequest {
   transcription_id?: string;
 }
 
+/** Sentinel prefix used to distinguish SSE error payloads from content chunks. */
+export const SSE_ERROR_PREFIX = '__SSE_ERROR__';
+
 async function* sseIterator(
   stream: ReadableStream<string>,
 ): AsyncGenerator<string, void, unknown> {
@@ -29,6 +32,11 @@ async function* sseIterator(
 
           try {
             const parsed = JSON.parse(data);
+            if (parsed.error) {
+              // Yield error with sentinel prefix so the consumer can detect it
+              yield `${SSE_ERROR_PREFIX}${parsed.error}`;
+              return;
+            }
             if (parsed.content) {
               yield parsed.content;
             }
