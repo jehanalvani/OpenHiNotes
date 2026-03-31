@@ -43,6 +43,10 @@ async def upload_transcription(
     db: AsyncSession = Depends(get_db),
 ):
     """Upload audio file and create transcription."""
+    # Normalize language: "auto" means let VoxBench auto-detect (omit param)
+    if language and language.lower() == "auto":
+        language = None
+
     # Validate file
     if not file.filename:
         raise HTTPException(
@@ -129,6 +133,10 @@ async def upload_transcription_stream(
       - {"event": "complete", "transcription": { ... }}
       - {"event": "error", "message": "..."}
     """
+    # Normalize language: "auto" means let VoxBench auto-detect (omit param)
+    if language and language.lower() == "auto":
+        language = None
+
     # Validate file
     if not file.filename:
         raise HTTPException(

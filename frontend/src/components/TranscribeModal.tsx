@@ -80,6 +80,14 @@ export function TranscribeModal({
         },
       );
 
+      // Check if the transcription actually succeeded
+      if (transcription.status === 'failed') {
+        setError(transcription.error_message || 'Transcription failed on the server');
+        setIsTranscribing(false);
+        setProgress(0);
+        return;
+      }
+
       setProgress(100);
       setTimeout(() => {
         onComplete(transcription);
