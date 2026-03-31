@@ -47,6 +47,7 @@ function getSpeakerColorByIndex(index: number) {
 export function TranscriptionViewer({ transcription, onSpeakerUpdate }: TranscriptionViewerProps) {
   const [copied, setCopied] = useState(false);
   const [editingSpeaker, setEditingSpeaker] = useState<string | null>(null);
+  const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [editValue, setEditValue] = useState('');
   const editInputRef = useRef<HTMLInputElement>(null);
 
@@ -62,13 +63,13 @@ export function TranscriptionViewer({ transcription, onSpeakerUpdate }: Transcri
     return map;
   }, [transcription.segments]);
 
-  // Focus the input when entering edit mode
+  // Focus the input when entering edit mode, without scrolling
   useEffect(() => {
-    if (editingSpeaker && editInputRef.current) {
-      editInputRef.current.focus();
+    if (editingIndex !== null && editInputRef.current) {
+      editInputRef.current.focus({ preventScroll: true });
       editInputRef.current.select();
     }
-  }, [editingSpeaker]);
+  }, [editingIndex]);
 
   const copyToClipboard = () => {
     navigator.clipboard.writeText(transcription.text);
@@ -99,9 +100,10 @@ export function TranscriptionViewer({ transcription, onSpeakerUpdate }: Transcri
   };
 
   // --- Inline editing handlers ---
-  const startEditing = (speakerId: string) => {
+  const startEditing = (speakerId: string, segmentIndex: number) => {
     if (!onSpeakerUpdate) return;
     setEditingSpeaker(speakerId);
+    setEditingIndex(segmentIndex);
     setEditValue(getSpeakerName(speakerId));
   };
 
@@ -110,11 +112,13 @@ export function TranscriptionViewer({ transcription, onSpeakerUpdate }: Transcri
       onSpeakerUpdate(editingSpeaker, editValue.trim());
     }
     setEditingSpeaker(null);
+    setEditingIndex(null);
     setEditValue('');
   };
 
   const cancelEdit = () => {
     setEditingSpeaker(null);
+    setEditingIndex(null);
     setEditValue('');
   };
 
@@ -153,7 +157,7 @@ export function TranscriptionViewer({ transcription, onSpeakerUpdate }: Transcri
       <div className="space-y-3 max-h-96 overflow-y-auto">
         {transcription.segments.map((segment, idx) => {
           const color = getSpeakerColor(segment.speaker);
-          const isEditing = editingSpeaker === segment.speaker;
+          const isEditing = editingIndex === idx;
 
           return (
             <div
@@ -184,7 +188,7 @@ export function TranscriptionViewer({ transcription, onSpeakerUpdate }: Transcri
                     className={`inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-semibold mb-1 ${color.badge} ${
                       onSpeakerUpdate ? 'cursor-pointer group/badge hover:ring-2 hover:ring-blue-400 hover:ring-offset-1 dark:hover:ring-offset-gray-800' : ''
                     }`}
-                    onClick={() => segment.speaker && startEditing(segment.speaker)}
+                    onClick={() => segment.speaker && startEditing(segment.speaker, idx)}
                     title={onSpeakerUpdate ? 'Click to edit speaker name' : undefined}
                   >
                     {getSpeakerName(segment.speaker)}
