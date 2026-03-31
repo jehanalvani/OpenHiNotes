@@ -15,6 +15,7 @@ interface AppState {
   theme: 'dark' | 'light';
   transcriptions: Transcription[];
   templates: SummaryTemplate[];
+  recordingAliases: Record<string, string>; // fileName → alias
 
   setDevice: (device: HiDockDevice | null) => void;
   setRecordings: (recordings: AudioRecording[]) => void;
@@ -24,6 +25,9 @@ interface AppState {
   setTheme: (theme: 'dark' | 'light') => void;
   setTranscriptions: (transcriptions: Transcription[]) => void;
   setTemplates: (templates: SummaryTemplate[]) => void;
+  setRecordingAlias: (fileName: string, alias: string) => void;
+  removeRecordingAlias: (fileName: string) => void;
+  cleanOrphanAliases: (currentFileNames: string[]) => void;
 }
 
 export const useAppStore = create<AppState>()(
@@ -36,6 +40,7 @@ export const useAppStore = create<AppState>()(
       theme: 'light',
       transcriptions: [],
       templates: [],
+      recordingAliases: {},
 
       setDevice: (device: HiDockDevice | null) => {
         set({
@@ -83,11 +88,38 @@ export const useAppStore = create<AppState>()(
       setTemplates: (templates: SummaryTemplate[]) => {
         set({ templates });
       },
+
+      setRecordingAlias: (fileName: string, alias: string) => {
+        set((state) => ({
+          recordingAliases: { ...state.recordingAliases, [fileName]: alias },
+        }));
+      },
+
+      removeRecordingAlias: (fileName: string) => {
+        set((state) => {
+          const { [fileName]: _, ...rest } = state.recordingAliases;
+          return { recordingAliases: rest };
+        });
+      },
+
+      cleanOrphanAliases: (currentFileNames: string[]) => {
+        set((state) => {
+          const fileSet = new Set(currentFileNames);
+          const cleaned: Record<string, string> = {};
+          for (const [key, value] of Object.entries(state.recordingAliases) as [string, string][]) {
+            if (fileSet.has(key)) {
+              cleaned[key] = value;
+            }
+          }
+          return { recordingAliases: cleaned };
+        });
+      },
     }),
     {
       name: 'app-storage',
       partialize: (state) => ({
         theme: state.theme,
+        recordingAliases: state.recordingAliases,
       }),
     }
   )

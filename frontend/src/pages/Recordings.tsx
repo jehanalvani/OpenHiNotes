@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Layout } from '@/components/Layout';
 import { useDeviceConnection } from '@/hooks/useDeviceConnection';
 import { useAppStore } from '@/store/useAppStore';
@@ -6,14 +6,15 @@ import { TranscribeModal } from '@/components/TranscribeModal';
 import { AudioPlayer } from '@/components/AudioPlayer';
 import { Transcription } from '@/types';
 import { deviceService } from '@/services/deviceService';
-import { Play, Download, Trash2, Zap, FileText, AlertCircle } from 'lucide-react';
+import { Play, Download, Trash2, Zap, FileText, AlertCircle, Pencil, X } from 'lucide-react';
 import { format } from 'date-fns';
 
 export function Recordings() {
   const device = useAppStore((s) => s.device);
   const recordings = useAppStore((s) => s.recordings);
   const selectedRecordings = useAppStore((s) => s.selectedRecordings);
-  const { toggleRecordingSelection, clearSelectedRecordings } = useAppStore();
+  const recordingAliases = useAppStore((s) => s.recordingAliases);
+  const { toggleRecordingSelection, clearSelectedRecordings, setRecordingAlias, removeRecordingAlias, cleanOrphanAliases } = useAppStore();
 
   const {
     connectDevice,
@@ -31,6 +32,56 @@ export function Recordings() {
   const [downloadProgress, setDownloadProgress] = useState<Record<string, number>>({});
   const [playingFile, setPlayingFile] = useState<{ blob: Blob; name: string } | null>(null);
   const [autoSummarize, setAutoSummarize] = useState(false);
+  const [editingAlias, setEditingAlias] = useState<string | null>(null); // fileName being edited
+  const [aliasInput, setAliasInput] = useState('');
+  const aliasInputRef = useRef<HTMLInputElement>(null);
+
+  // Orphan alias detection
+  const currentFileNames = recordings.map((r) => r.fileName);
+  const orphanAliasKeys = Object.keys(recordingAliases).filter(
+    (key) => !currentFileNames.includes(key)
+  );
+  const orphanCount = orphanAliasKeys.length;
+
+  const startEditingAlias = useCallback((fileName: string) => {
+    setEditingAlias(fileName);
+    setAliasInput(recordingAliases[fileName] || '');
+    // Focus the input after render
+    setTimeout(() => aliasInputRef.current?.focus(), 0);
+  }, [recordingAliases]);
+
+  const saveAlias = useCallback(() => {
+    if (editingAlias === null) return;
+    const trimmed = aliasInput.trim();
+    if (trimmed) {
+      setRecordingAlias(editingAlias, trimmed);
+    } else {
+      removeRecordingAlias(editingAlias);
+    }
+    setEditingAlias(null);
+    setAliasInput('');
+  }, [editingAlias, aliasInput, setRecordingAlias, removeRecordingAlias]);
+
+  const cancelEditingAlias = useCallback(() => {
+    setEditingAlias(null);
+    setAliasInput('');
+  }, []);
+
+  const handleAliasKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      saveAlias();
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      cancelEditingAlias();
+    }
+  }, [saveAlias, cancelEditingAlias]);
+
+  const handleCleanOrphanAliases = useCallback(() => {
+    const count = orphanCount;
+    cleanOrphanAliases(currentFileNames);
+    alert(`Cleaned ${count} orphan alias${count !== 1 ? 'es' : ''}.`);
+  }, [cleanOrphanAliases, currentFileNames, orphanCount]);
 
   useEffect(() => {
     if (device?.connected) {
@@ -173,10 +224,18 @@ export function Recordings() {
               }
             }}
             disabled={isLoading}
-            className="w-full px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50"
+            className="w-full px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50 mb-2"
           >
             Format Device
           </button>
+          {orphanCount > 0 && (
+            <button
+              onClick={handleCleanOrphanAliases}
+              className="w-full px-4 py-2 bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded-lg text-sm font-medium transition-colors"
+            >
+              Clean {orphanCount} orphan alias{orphanCount !== 1 ? 'es' : ''}
+            </button>
+          )}
         </div>
       </div>
 
@@ -220,7 +279,7 @@ export function Recordings() {
                     />
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 dark:text-gray-300 uppercase tracking-wider">
-                    Filename
+                    Name
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 dark:text-gray-300 uppercase tracking-wider">
                     Size
@@ -254,8 +313,37 @@ export function Recordings() {
                           className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-2 focus:ring-blue-500"
                         />
                       </td>
-                      <td className="px-6 py-4 text-sm font-medium text-gray-900 dark:text-white">
-                        {recording.fileName}
+                      <td className="px-6 py-4 text-sm">
+                        {editingAlias === recording.fileName ? (
+                          <input
+                            ref={aliasInputRef}
+                            type="text"
+                            value={aliasInput}
+                            onChange={(e) => setAliasInput(e.target.value)}
+                            onKeyDown={handleAliasKeyDown}
+                            onBlur={saveAlias}
+                            placeholder="Enter alias..."
+                            className="w-full px-2 py-1 bg-white dark:bg-gray-700 text-gray-900 dark:text-white border border-blue-500 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                          />
+                        ) : (
+                          <div
+                            className="group cursor-pointer flex items-center gap-1.5"
+                            onClick={() => startEditingAlias(recording.fileName)}
+                            title="Click to edit alias"
+                          >
+                            <div className="min-w-0">
+                              <span className="font-medium text-gray-900 dark:text-white block truncate">
+                                {recordingAliases[recording.fileName] || recording.fileName}
+                              </span>
+                              {recordingAliases[recording.fileName] && (
+                                <span className="text-xs text-gray-400 dark:text-gray-500 block truncate">
+                                  {recording.fileName}
+                                </span>
+                              )}
+                            </div>
+                            <Pencil className="w-3.5 h-3.5 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0" />
+                          </div>
+                        )}
                       </td>
                       <td className="px-6 py-4 text-sm text-gray-500 dark:text-gray-400">
                         {(recording.size / 1024 / 1024).toFixed(2)} MB
