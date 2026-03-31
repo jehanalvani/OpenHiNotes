@@ -392,48 +392,70 @@ class DeviceService {
     let received = 0;
     const startTime = Date.now();
     let consecutiveTimeouts = 0;
-    const maxConsecutiveTimeouts = 100; // Allow up to 100 timeouts of no data before giving up
+    const maxConsecutiveTimeouts = 100;
+    let lastProgressLog = -1; // Track last logged progress percentage
 
-    // No hard time limit — as long as data keeps flowing the download continues.
-    // The consecutive timeout counter handles true stalls.
-    while (received < fileSize) {
-      try {
-        // Accept packets matching our seqId OR matching the stream command
-        // Also accept TRANSFER_FILE (5) when expecting GET_FILE_BLOCK (13) and vice versa
-        const response = await this.receiveResponse(seqId, 15000, streamCmd);
-        if (response.body.length === 0) {
-          console.log('[OpenHiNotes] Received empty packet at %d/%d bytes', received, fileSize);
-          if (received > 0) break; // End of transfer
-          continue;
-        }
+    // Optimized download loop matching reference implementation pattern:
+    // 1. Read raw USB data into buffer
+    // 2. Parse ALL available packets in a tight inner loop
+    // This avoids per-packet overhead from receiveResponse() and extracts
+    // multiple packets per USB read, dramatically improving throughput.
+    while (received < fileSize && consecutiveTimeouts < maxConsecutiveTimeouts) {
+      const gotData = await this.readToBuffer();
 
-        chunks.push(new Uint8Array(response.body));
-        received += response.body.length;
-        consecutiveTimeouts = 0; // Reset on successful receive
-
-        console.log('[OpenHiNotes] Chunk: +%d bytes, total: %d/%d (%d%%)',
-          response.body.length, received, fileSize,
-          Math.round((received / fileSize) * 100));
-
-        if (onProgress && fileSize > 0) {
-          onProgress(Math.min(100, Math.round((received / fileSize) * 100)));
-        }
-      } catch (err) {
+      if (!gotData) {
         consecutiveTimeouts++;
-        console.warn('[OpenHiNotes] Download timeout #%d at %d/%d bytes: %s',
-          consecutiveTimeouts, received, fileSize,
-          err instanceof Error ? err.message : String(err));
-
+        if (consecutiveTimeouts % 20 === 0) {
+          console.warn('[OpenHiNotes] Download: %d consecutive empty reads at %d/%d bytes',
+            consecutiveTimeouts, received, fileSize);
+        }
+        // Check if we're close enough to done
         if (received > 0 && received >= fileSize - 1024) {
           console.log('[OpenHiNotes] Close enough to expected size, finishing');
           break;
         }
-        if (consecutiveTimeouts >= maxConsecutiveTimeouts) {
-          console.error('[OpenHiNotes] Too many consecutive timeouts, aborting');
-          throw new Error(`Download stalled at ${Math.round((received / fileSize) * 100)}% (${received}/${fileSize} bytes)`);
-        }
-        // Otherwise continue the loop — the device may just be slow
+        await new Promise((r) => setTimeout(r, 20));
+        continue;
       }
+
+      consecutiveTimeouts = 0;
+
+      // Tight inner loop: parse ALL available packets from the buffer
+      while (received < fileSize) {
+        const msg = this.tryParsePacket(seqId, streamCmd);
+        if (!msg) break; // No complete packet available yet
+
+        if (msg.body.length === 0) {
+          if (received > 0) {
+            console.log('[OpenHiNotes] Empty packet at %d/%d — end of transfer', received, fileSize);
+            break;
+          }
+          continue;
+        }
+
+        chunks.push(new Uint8Array(msg.body));
+        received += msg.body.length;
+
+        // Log progress at every 10% milestone (not every chunk)
+        const pct = Math.round((received / fileSize) * 100);
+        const milestone = Math.floor(pct / 10) * 10;
+        if (milestone > lastProgressLog) {
+          lastProgressLog = milestone;
+          const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+          const speed = (received / 1024 / ((Date.now() - startTime) / 1000)).toFixed(0);
+          console.log('[OpenHiNotes] Download: %d%% (%d/%d bytes) — %ss elapsed, %s KB/s',
+            pct, received, fileSize, elapsed, speed);
+        }
+
+        if (onProgress && fileSize > 0) {
+          onProgress(Math.min(100, pct));
+        }
+      }
+    }
+
+    if (consecutiveTimeouts >= maxConsecutiveTimeouts) {
+      console.error('[OpenHiNotes] Too many consecutive timeouts, aborting');
+      throw new Error(`Download stalled at ${Math.round((received / fileSize) * 100)}% (${received}/${fileSize} bytes)`);
     }
 
     if (received === 0) {
@@ -497,6 +519,30 @@ class DeviceService {
     return seqId;
   }
 
+  /**
+   * Read raw USB data into the receive buffer.
+   * Returns true if data was received, false on timeout/error.
+   */
+  private async readToBuffer(): Promise<boolean> {
+    if (!this.device) return false;
+
+    try {
+      const result = await this.device.transferIn(ENDPOINT_IN, 65536);
+      if (result.status === 'ok' && result.data && result.data.byteLength > 0) {
+        this.receiveBuffer = concatBuffers(
+          this.receiveBuffer,
+          new Uint8Array(result.data.buffer),
+        );
+        return true;
+      }
+      return false;
+    } catch (err) {
+      // DOMException NetworkError = USB timeout (expected, device has no data yet)
+      // DOMException InvalidStateError = device disconnected
+      return false;
+    }
+  }
+
   private async receiveResponse(
     expectedSeqId: number,
     timeout = 10000,
@@ -507,37 +553,17 @@ class DeviceService {
     const deadline = Date.now() + timeout;
 
     while (Date.now() < deadline) {
-      try {
-        // Wrap transferIn in a race with a timeout to prevent it from
-        // blocking indefinitely (WebUSB can hang if the device stops responding)
-        const remaining = Math.max(deadline - Date.now(), 100);
-        const usbTimeout = Math.min(remaining, 5000);
-
-        const result = await Promise.race([
-          this.device.transferIn(ENDPOINT_IN, 65536),
-          new Promise<USBInTransferResult>((_resolve, reject) =>
-            setTimeout(() => reject(new Error('USB_READ_TIMEOUT')), usbTimeout)
-          ),
-        ]);
-
-        if (result.status === 'ok' && result.data) {
-          this.receiveBuffer = concatBuffers(
-            this.receiveBuffer,
-            new Uint8Array(result.data.buffer),
-          );
-        }
-      } catch (err) {
-        // USB_READ_TIMEOUT or DOMException NetworkError — both are expected,
-        // continue the loop so the deadline check can fire.
-      }
-
-      // Try to extract a complete packet
+      // Check buffer first before reading more data
       const pkt = this.tryParsePacket(expectedSeqId, expectedCommandId);
       if (pkt) {
         return pkt;
       }
 
-      await new Promise((r) => setTimeout(r, 10));
+      const gotData = await this.readToBuffer();
+      if (!gotData) {
+        // Small delay to prevent busy-waiting when device has no data
+        await new Promise((r) => setTimeout(r, 20));
+      }
     }
     throw new Error(`Timeout waiting for resp (seq ${expectedSeqId}, cmd ${expectedCommandId})`);
   }
@@ -565,7 +591,10 @@ class DeviceService {
       const body = this.receiveBuffer.slice(12, 12 + bodyLen);
       this.receiveBuffer = this.receiveBuffer.slice(totalLen);
 
-      console.debug('[OpenHiNotes] RECV pkt: cmd=%d, seq=%d, len=%d', commandId, seqId, bodyLen);
+      // Only log non-streaming packets to avoid flooding console during downloads
+      if (bodyLen < 100 || commandId === COMMANDS.GET_DEVICE_INFO || commandId === COMMANDS.GET_CARD_INFO) {
+        console.debug('[OpenHiNotes] RECV pkt: cmd=%d, seq=%d, len=%d', commandId, seqId, bodyLen);
+      }
 
       // Match logic: 
       // 1. Precise sequence match
