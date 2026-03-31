@@ -12,10 +12,10 @@ class Settings(BaseSettings):
     # Security
     secret_key: str = "your-secret-key-change-in-production"
 
-    # WhisperX / VoxBench API
-    whisperx_api_url: str = "http://whisperx:8000"
-    whisperx_api_key: str = ""
-    whisperx_model: str = "large-v3"
+    # VoxBench API (transcription)
+    voxbench_api_url: str = "http://voxbench:8000"
+    voxbench_api_key: str = ""
+    voxbench_model: str = "large-v3"
     voxbench_job_mode: str = "false"
 
     # LLM API (OpenAI-compatible)
@@ -28,7 +28,7 @@ class Settings(BaseSettings):
     # Set to a file path to use a custom CA bundle (e.g. /etc/ssl/certs/ca-certificates.crt)
     # Set to "true" (default) to use the system CA store
     llm_verify_ssl: str = "true"
-    whisperx_verify_ssl: str = "true"
+    voxbench_verify_ssl: str = "true"
 
     # CORS
     cors_origins: List[str] = ["*"]
@@ -65,8 +65,8 @@ class Settings(BaseSettings):
         return self.get_ssl_verify(self.llm_verify_ssl)
 
     @property
-    def whisperx_ssl_verify(self) -> Union[bool, str, ssl.SSLContext]:
-        return self.get_ssl_verify(self.whisperx_verify_ssl)
+    def voxbench_ssl_verify(self) -> Union[bool, str, ssl.SSLContext]:
+        return self.get_ssl_verify(self.voxbench_verify_ssl)
 
 
 settings = Settings()

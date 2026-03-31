@@ -4,17 +4,17 @@ import { settingsApi, AppSetting } from '@/api/settings';
 import { Save, RotateCcw, Loader, CheckCircle, AlertCircle } from 'lucide-react';
 
 const SETTING_LABELS: Record<string, { label: string; placeholder: string; type: string }> = {
-  whisperx_api_url: {
-    label: 'VoxBench / WhisperX API URL',
-    placeholder: 'http://whisperx:8000',
+  voxbench_api_url: {
+    label: 'VoxBench API URL',
+    placeholder: 'http://voxbench:8000',
     type: 'url',
   },
-  whisperx_api_key: {
+  voxbench_api_key: {
     label: 'VoxBench API Key',
     placeholder: 'Leave empty if no auth required',
     type: 'password',
   },
-  whisperx_model: {
+  voxbench_model: {
     label: 'Transcription Model',
     placeholder: 'whisper:turbo, voxtral:mini-4b, large-v3',
     type: 'text',
@@ -233,10 +233,10 @@ export function ApiSettings() {
         </div>
       ) : (
         <div className="space-y-6">
-          {renderSettingGroup('Transcription (VoxBench / WhisperX)', [
-            'whisperx_api_url',
-            'whisperx_api_key',
-            'whisperx_model',
+          {renderSettingGroup('Transcription (VoxBench)', [
+            'voxbench_api_url',
+            'voxbench_api_key',
+            'voxbench_model',
             'voxbench_job_mode',
           ])}
           {renderSettingGroup('LLM / Chat', [

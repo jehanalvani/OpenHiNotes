@@ -76,19 +76,19 @@ Change these via the `ADMIN_EMAIL` and `ADMIN_PASSWORD` environment variables be
 
 All configuration is done through environment variables (see [`.env.example`](.env.example)):
 
-| Variable              | Description                                      | Default                                |
-|-----------------------|--------------------------------------------------|----------------------------------------|
-| `SECRET_KEY`          | JWT signing key — change in production           | `change-me-...`                        |
-| `ADMIN_EMAIL`         | Initial admin account email                      | `admin@openhinotes.local`              |
-| `ADMIN_PASSWORD`      | Initial admin account password                   | `admin`                                |
-| `WHISPERX_API_URL`    | URL of the VoxBench transcription API            | `http://whisperx:8000`                 |
-| `WHISPERX_MODEL`      | Whisper model to use                             | `large-v3`                             |
-| `WHISPERX_VERIFY_SSL` | SSL verification for VoxBench API calls          | `true`                                 |
-| `LLM_API_URL`         | OpenAI-compatible chat completions endpoint      | `http://host.docker.internal:11434/v1` |
-| `LLM_API_KEY`         | API key for the LLM endpoint (if required)       | *(empty)*                              |
-| `LLM_MODEL`           | Model name for chat and summaries                | `gpt-3.5-turbo`                        |
-| `LLM_VERIFY_SSL`      | SSL verification for LLM API calls               | `true`                                 |
-| `CORS_ORIGINS`        | Allowed CORS origins                             | `*`                                    |
+| Variable               | Description                                      | Default                                |
+|------------------------|--------------------------------------------------|----------------------------------------|
+| `SECRET_KEY`           | JWT signing key — change in production           | `change-me-...`                        |
+| `ADMIN_EMAIL`          | Initial admin account email                      | `admin@openhinotes.local`              |
+| `ADMIN_PASSWORD`       | Initial admin account password                   | `admin`                                |
+| `VOXBENCH_API_URL`     | URL of the VoxBench transcription API            | `http://voxbench:8000`                 |
+| `VOXBENCH_MODEL`       | Whisper model to use                             | `large-v3`                             |
+| `VOXBENCH_VERIFY_SSL`  | SSL verification for VoxBench API calls          | `true`                                 |
+| `LLM_API_URL`          | OpenAI-compatible chat completions endpoint      | `http://host.docker.internal:11434/v1` |
+| `LLM_API_KEY`          | API key for the LLM endpoint (if required)       | *(empty)*                              |
+| `LLM_MODEL`            | Model name for chat and summaries                | `gpt-3.5-turbo`                        |
+| `LLM_VERIFY_SSL`       | SSL verification for LLM API calls               | `true`                                 |
+| `CORS_ORIGINS`         | Allowed CORS origins                             | `*`                                    |
 
 ### SSL Verification
 

@@ -13,18 +13,18 @@ router = APIRouter(prefix="/settings", tags=["settings"])
 
 # Settings keys that can be configured through the admin UI
 CONFIGURABLE_KEYS = {
-    "whisperx_api_url": {
-        "description": "VoxBench / WhisperX API base URL (e.g. http://server:8000)",
-        "default_from_env": "whisperx_api_url",
+    "voxbench_api_url": {
+        "description": "VoxBench API base URL (e.g. http://server:8000)",
+        "default_from_env": "voxbench_api_url",
     },
-    "whisperx_api_key": {
+    "voxbench_api_key": {
         "description": "VoxBench API key (leave empty if no auth required)",
-        "default_from_env": "whisperx_api_key",
+        "default_from_env": "voxbench_api_key",
         "sensitive": True,
     },
-    "whisperx_model": {
+    "voxbench_model": {
         "description": "Transcription model (e.g. whisper:turbo, voxtral:mini-4b, large-v3)",
-        "default_from_env": "whisperx_model",
+        "default_from_env": "voxbench_model",
     },
     "voxbench_job_mode": {
         "description": "Enable async Job Mode for long recordings (true/false)",

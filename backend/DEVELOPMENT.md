@@ -60,7 +60,7 @@ app/
   - **Job mode**: async submit → poll with progress callback → fetch result
 - `on_progress` callback enables real-time SSE streaming to the frontend
 - Segment parsing with speaker extraction
-- Configurable SSL verification via `WHISPERX_VERIFY_SSL`
+- Configurable SSL verification via `VOXBENCH_VERIFY_SSL`
 
 ### LLMService
 

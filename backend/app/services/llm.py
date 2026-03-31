@@ -103,8 +103,8 @@ class LLMService:
         async with httpx.AsyncClient(timeout=120.0, verify=settings.llm_ssl_verify) as client:
             async with client.stream("POST", url, json=payload, headers=headers) as response:
                 if response.status_code != 200:
-                    error_text = await response.atext()
-                    raise Exception(f"LLM API error: {response.status_code} - {error_text}")
+                    error_body = await response.aread()
+                    raise Exception(f"LLM API error: {response.status_code} - {error_body.decode()}")
 
                 async for line in response.aiter_lines():
                     if line.startswith("data: "):

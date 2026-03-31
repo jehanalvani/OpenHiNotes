@@ -45,8 +45,8 @@ cp .env.example .env
 Key variables:
 - `DATABASE_URL` — PostgreSQL connection string
 - `SECRET_KEY` — JWT signing key (change in production!)
-- `WHISPERX_API_URL` — URL to [VoxBench](https://github.com/ghecko/VoxBench) transcription service
-- `WHISPERX_VERIFY_SSL` — SSL verification for VoxBench calls (`true`, `false`, or CA bundle path)
+- `VOXBENCH_API_URL` — URL to [VoxBench](https://github.com/ghecko/VoxBench) transcription service
+- `VOXBENCH_VERIFY_SSL` — SSL verification for VoxBench calls (`true`, `false`, or CA bundle path)
 - `LLM_API_URL` — OpenAI-compatible API endpoint
 - `LLM_VERIFY_SSL` — SSL verification for LLM calls (`true`, `false`, or CA bundle path)
 - `ADMIN_EMAIL` / `ADMIN_PASSWORD` — Initial admin credentials
