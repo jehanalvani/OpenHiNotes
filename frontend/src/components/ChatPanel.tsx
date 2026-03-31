@@ -3,6 +3,29 @@ import { Send, AlertCircle } from 'lucide-react';
 import { ChatMessage } from '@/types';
 import { chatApi, SSE_ERROR_PREFIX } from '@/api/chat';
 
+/** Lightweight markdown-to-HTML for assistant messages (bold, italic, lists, line breaks). */
+function formatMarkdown(text: string): string {
+  return text
+    // Escape HTML
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    // Bold: **text** or __text__
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/__(.+?)__/g, '<strong>$1</strong>')
+    // Italic: *text* or _text_
+    .replace(/\*(.+?)\*/g, '<em>$1</em>')
+    .replace(/_(.+?)_/g, '<em>$1</em>')
+    // Unordered list items: lines starting with "- " or "* "
+    .replace(/^[\s]*[-*]\s+(.+)$/gm, '<li>$1</li>')
+    // Ordered list items: lines starting with "1. ", "2. ", etc.
+    .replace(/^[\s]*\d+\.\s+(.+)$/gm, '<li>$1</li>')
+    // Wrap consecutive <li> in <ul>
+    .replace(/((?:<li>.*<\/li>\n?)+)/g, '<ul>$1</ul>')
+    // Line breaks for remaining newlines
+    .replace(/\n/g, '<br/>');
+}
+
 interface ChatPanelProps {
   transcriptionId?: string;
 }
@@ -138,8 +161,8 @@ export function ChatPanel({ transcriptionId }: ChatPanelProps) {
   };
 
   return (
-    <div className="flex flex-col h-full bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+    <div className="flex flex-col h-full max-h-[600px] bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+      <div className="flex-1 overflow-y-auto min-h-0 p-4 space-y-4">
         {messages.length === 0 && !awaitingFirstChunk && (
           <div className="flex items-center justify-center h-full text-gray-500 dark:text-gray-400">
             <p className="text-center">
@@ -163,7 +186,7 @@ export function ChatPanel({ transcriptionId }: ChatPanelProps) {
           if (message.isError) {
             return (
               <div key={idx} className="flex justify-start">
-                <div className="max-w-xs lg:max-w-md px-4 py-2 rounded-lg bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800">
+                <div className="max-w-[85%] px-4 py-2 rounded-lg bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800">
                   <div className="flex items-start gap-2">
                     <AlertCircle className="w-4 h-4 text-red-500 dark:text-red-400 mt-0.5 flex-shrink-0" />
                     <p className="text-sm text-red-700 dark:text-red-300 whitespace-pre-wrap">
@@ -181,13 +204,20 @@ export function ChatPanel({ transcriptionId }: ChatPanelProps) {
               className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
             >
               <div
-                className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${
+                className={`max-w-[85%] px-4 py-2 rounded-lg ${
                   message.role === 'user'
                     ? 'bg-primary-600 text-white'
                     : 'bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white'
                 }`}
               >
-                <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+                {message.role === 'assistant' ? (
+                  <div
+                    className="text-sm [&_strong]:font-semibold [&_em]:italic [&_ul]:list-disc [&_ul]:pl-4 [&_ul]:my-1 [&_ol]:list-decimal [&_ol]:pl-4 [&_ol]:my-1 [&_li]:my-0.5 [&_br]:leading-relaxed"
+                    dangerouslySetInnerHTML={{ __html: formatMarkdown(message.content) }}
+                  />
+                ) : (
+                  <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+                )}
               </div>
             </div>
           );
