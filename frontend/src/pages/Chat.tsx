@@ -8,12 +8,14 @@ export function Chat() {
   const [transcriptions, setTranscriptions] = useState<Transcription[]>([]);
   const [selectedTranscriptionId, setSelectedTranscriptionId] = useState<string | undefined>();
   const [isLoadingTranscriptions, setIsLoadingTranscriptions] = useState(false);
+  const [hasLoadedTranscriptions, setHasLoadedTranscriptions] = useState(false);
 
   const handleLoadTranscriptions = async () => {
     setIsLoadingTranscriptions(true);
     try {
       const response = await transcriptionsApi.getTranscriptions(0, 50);
-      setTranscriptions(response.items);
+      setTranscriptions(response.items.filter(t => t.status === 'completed'));
+      setHasLoadedTranscriptions(true);
     } catch (error) {
       console.error('Failed to load transcriptions:', error);
     } finally {
@@ -47,7 +49,7 @@ export function Chat() {
             )}
           </div>
 
-          {transcriptions.length > 0 && (
+          {transcriptions.length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-64 overflow-y-auto">
               {transcriptions.map((t) => (
                 <button
@@ -63,12 +65,16 @@ export function Chat() {
                     {t.original_filename}
                   </p>
                   <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">
-                    {t.status === 'completed' ? 'Ready' : t.status}
+                    Ready
                   </p>
                 </button>
               ))}
             </div>
-          )}
+          ) : hasLoadedTranscriptions ? (
+            <p className="text-sm text-gray-500 dark:text-gray-400">
+              No completed transcriptions available. Transcriptions must finish processing before they can be used as chat context.
+            </p>
+          ) : null}
         </div>
 
         <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 h-96 md:h-[600px]">

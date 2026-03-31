@@ -160,7 +160,19 @@ export function TranscriptionDetail() {
           </div>
         </div>
 
-        <TranscriptionViewer transcription={transcription} />
+        <TranscriptionViewer
+          transcription={transcription}
+          onSpeakerUpdate={async (speakerId, newName) => {
+            if (!transcription) return;
+            const updatedSpeakers = { ...transcription.speakers, [speakerId]: newName };
+            try {
+              const updated = await transcriptionsApi.updateSpeakers(transcription.id, updatedSpeakers);
+              setTranscription(updated);
+            } catch (error) {
+              console.error('Failed to update speaker:', error);
+            }
+          }}
+        />
 
         {transcription.status === 'completed' && (
           <>

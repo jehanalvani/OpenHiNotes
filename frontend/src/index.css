@@ -4,10 +4,48 @@
 
 @layer base {
   body {
-    @apply bg-white text-gray-900 dark:bg-gray-900 dark:text-white transition-colors;
+    @apply bg-surface text-gray-900 dark:bg-surface-darker dark:text-white;
+    transition: background-color 0.3s ease, color 0.3s ease;
   }
 
   a {
-    @apply text-blue-600 dark:text-blue-400 hover:underline;
+    @apply text-primary-600 dark:text-primary-400 hover:underline;
+  }
+
+  /* Custom scrollbar — light mode */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    @apply bg-transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    @apply bg-gray-300 rounded-full;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-gray-400;
+  }
+
+  /* Custom scrollbar — dark mode */
+  .dark ::-webkit-scrollbar-thumb {
+    @apply bg-gray-600;
+  }
+
+  .dark ::-webkit-scrollbar-thumb:hover {
+    @apply bg-gray-500;
+  }
+
+  /* Firefox scrollbar */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: #d1d5db transparent;
+  }
+
+  .dark * {
+    scrollbar-color: #4b5563 transparent;
   }
 }
