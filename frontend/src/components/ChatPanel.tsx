@@ -41,42 +41,16 @@ export function ChatPanel({ transcriptionId }: ChatPanelProps) {
         { role: 'assistant', content: '' },
       ]);
 
-      const reader = stream.getReader();
-      const decoder = new TextDecoder();
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        const chunk = decoder.decode(value);
-        const lines = chunk.split('\n');
-
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            const data = line.slice(6).trim();
-
-            if (data === '[DONE]') {
-              continue;
-            }
-
-            try {
-              const parsed = JSON.parse(data);
-              if (parsed.content) {
-                assistantMessage += parsed.content;
-                setMessages((prev) => {
-                  const updated = [...prev];
-                  updated[updated.length - 1] = {
-                    role: 'assistant',
-                    content: assistantMessage,
-                  };
-                  return updated;
-                });
-              }
-            } catch (e) {
-              console.error('Failed to parse SSE message:', data);
-            }
-          }
-        }
+      for await (const content of chatApi.parseSSEStream(stream)) {
+        assistantMessage += content;
+        setMessages((prev) => {
+          const updated = [...prev];
+          updated[updated.length - 1] = {
+            role: 'assistant',
+            content: assistantMessage,
+          };
+          return updated;
+        });
       }
 
       setIsStreaming(false);
