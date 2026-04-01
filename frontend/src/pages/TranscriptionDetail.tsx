@@ -321,9 +321,9 @@ export function TranscriptionDetail() {
             <select
               value={transcription.collection_id || ''}
               onChange={(e) => handleCollectionChange(e.target.value)}
-              className="w-full text-sm font-semibold text-gray-900 dark:text-white bg-transparent border-none p-0 focus:outline-none focus:ring-0 cursor-pointer"
+              className="w-full text-sm font-semibold text-gray-900 dark:text-white bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-md px-2 py-1 focus:outline-none focus:ring-2 focus:ring-primary-500 cursor-pointer appearance-auto"
             >
-              <option value="">None</option>
+              <option value="">— None —</option>
               {collections.map((c) => (
                 <option key={c.id} value={c.id}>{c.name}</option>
               ))}
@@ -341,6 +341,19 @@ export function TranscriptionDetail() {
               setTranscription(updated);
             } catch (error) {
               console.error('Failed to update speaker:', error);
+            }
+          }}
+          onSegmentReassign={async (segmentIndex, newSpeaker) => {
+            if (!transcription) return;
+            try {
+              const updated = await transcriptionsApi.reassignSegmentSpeaker(
+                transcription.id,
+                [segmentIndex],
+                newSpeaker,
+              );
+              setTranscription(updated);
+            } catch (error) {
+              console.error('Failed to reassign segment speaker:', error);
             }
           }}
         />

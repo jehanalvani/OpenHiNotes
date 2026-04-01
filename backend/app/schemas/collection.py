@@ -7,12 +7,14 @@ import uuid
 class CollectionCreate(BaseModel):
     """Schema for creating a collection."""
     name: str
+    color: Optional[str] = None
     description: Optional[str] = None
 
 
 class CollectionUpdate(BaseModel):
     """Schema for updating a collection."""
     name: Optional[str] = None
+    color: Optional[str] = None
     description: Optional[str] = None
 
 
@@ -21,6 +23,7 @@ class CollectionResponse(BaseModel):
     id: uuid.UUID
     user_id: uuid.UUID
     name: str
+    color: Optional[str] = None
     description: Optional[str]
     created_at: datetime
     updated_at: datetime

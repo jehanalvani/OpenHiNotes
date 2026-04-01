@@ -41,6 +41,7 @@ async def _enrich_with_count(
             "id": c.id,
             "user_id": c.user_id,
             "name": c.name,
+            "color": c.color,
             "description": c.description,
             "created_at": c.created_at,
             "updated_at": c.updated_at,
@@ -77,6 +78,7 @@ async def create_collection(
     """Create a new collection."""
     collection = Collection(
         name=collection_create.name,
+        color=collection_create.color,
         description=collection_create.description,
         user_id=current_user.id,
     )
@@ -140,6 +142,8 @@ async def update_collection(
 
     if collection_update.name is not None:
         collection.name = collection_update.name
+    if collection_update.color is not None:
+        collection.color = collection_update.color
     if collection_update.description is not None:
         collection.description = collection_update.description
 

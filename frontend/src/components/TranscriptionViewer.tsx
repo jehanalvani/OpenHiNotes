@@ -1,10 +1,11 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
-import { Copy, Check, Pencil } from 'lucide-react';
+import { Copy, Check, Pencil, ArrowRightLeft, X } from 'lucide-react';
 import { Transcription } from '@/types';
 
 interface TranscriptionViewerProps {
   transcription: Transcription;
   onSpeakerUpdate?: (speakerId: string, newName: string) => void;
+  onSegmentReassign?: (segmentIndex: number, newSpeaker: string) => void;
 }
 
 /**
@@ -44,12 +45,13 @@ function getSpeakerColorByIndex(index: number) {
   return SPEAKER_PALETTE[index % SPEAKER_PALETTE.length];
 }
 
-export function TranscriptionViewer({ transcription, onSpeakerUpdate }: TranscriptionViewerProps) {
+export function TranscriptionViewer({ transcription, onSpeakerUpdate, onSegmentReassign }: TranscriptionViewerProps) {
   const [copied, setCopied] = useState(false);
   const [editingSpeaker, setEditingSpeaker] = useState<string | null>(null);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [editValue, setEditValue] = useState('');
   const editInputRef = useRef<HTMLInputElement>(null);
+  const [reassigningIndex, setReassigningIndex] = useState<number | null>(null);
 
   // Build a deterministic sorted speaker list → index map
   const speakerIndexMap = useMemo(() => {
@@ -62,6 +64,11 @@ export function TranscriptionViewer({ transcription, onSpeakerUpdate }: Transcri
     sorted.forEach((spk, i) => map.set(spk, i));
     return map;
   }, [transcription.segments]);
+
+  // Sorted list of unique speaker IDs for the reassign dropdown
+  const sortedSpeakers = useMemo(() => {
+    return Array.from(speakerIndexMap.keys()).sort();
+  }, [speakerIndexMap]);
 
   // Focus the input when entering edit mode, without scrolling
   useEffect(() => {
@@ -162,7 +169,7 @@ export function TranscriptionViewer({ transcription, onSpeakerUpdate }: Transcri
           return (
             <div
               key={idx}
-              className="flex gap-3 rounded-md px-3 py-2 transition-colors"
+              className="group flex gap-3 rounded-md px-3 py-2 transition-colors"
               style={{
                 borderLeft: `4px solid ${color.border}`,
                 backgroundColor: isDarkMode() ? color.bgDark : color.bgLight,
@@ -183,17 +190,56 @@ export function TranscriptionViewer({ transcription, onSpeakerUpdate }: Transcri
                     className={`inline-block px-2 py-1 rounded text-xs font-semibold mb-1 border-2 border-blue-500 outline-none ${color.badge}`}
                     style={{ minWidth: '80px', maxWidth: '200px' }}
                   />
+                ) : reassigningIndex === idx ? (
+                  <div className="inline-flex items-center gap-1 mb-1">
+                    <select
+                      autoFocus
+                      className="px-2 py-1 rounded text-xs font-semibold bg-white dark:bg-gray-700 text-gray-900 dark:text-white border border-gray-300 dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      defaultValue={segment.speaker || ''}
+                      onChange={(e) => {
+                        const newSpeaker = e.target.value;
+                        if (newSpeaker && newSpeaker !== segment.speaker && onSegmentReassign) {
+                          onSegmentReassign(idx, newSpeaker);
+                        }
+                        setReassigningIndex(null);
+                      }}
+                      onBlur={() => setReassigningIndex(null)}
+                    >
+                      {sortedSpeakers.map((spk) => (
+                        <option key={spk} value={spk}>
+                          {getSpeakerName(spk)}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      onClick={() => setReassigningIndex(null)}
+                      className="p-0.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
                 ) : (
-                  <div
-                    className={`inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-semibold mb-1 ${color.badge} ${
-                      onSpeakerUpdate ? 'cursor-pointer group/badge hover:ring-2 hover:ring-blue-400 hover:ring-offset-1 dark:hover:ring-offset-gray-800' : ''
-                    }`}
-                    onClick={() => segment.speaker && startEditing(segment.speaker, idx)}
-                    title={onSpeakerUpdate ? 'Click to edit speaker name' : undefined}
-                  >
-                    {getSpeakerName(segment.speaker)}
-                    {onSpeakerUpdate && (
-                      <Pencil className="w-3 h-3 opacity-0 group-hover/badge:opacity-60 transition-opacity" />
+                  <div className="inline-flex items-center gap-1 mb-1">
+                    <div
+                      className={`inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-semibold ${color.badge} ${
+                        onSpeakerUpdate ? 'cursor-pointer group/badge hover:ring-2 hover:ring-blue-400 hover:ring-offset-1 dark:hover:ring-offset-gray-800' : ''
+                      }`}
+                      onClick={() => segment.speaker && startEditing(segment.speaker, idx)}
+                      title={onSpeakerUpdate ? 'Click to rename speaker' : undefined}
+                    >
+                      {getSpeakerName(segment.speaker)}
+                      {onSpeakerUpdate && (
+                        <Pencil className="w-3 h-3 opacity-0 group-hover/badge:opacity-60 transition-opacity" />
+                      )}
+                    </div>
+                    {onSegmentReassign && sortedSpeakers.length > 1 && (
+                      <button
+                        onClick={() => setReassigningIndex(idx)}
+                        className="p-1 text-gray-400 hover:text-blue-500 dark:hover:text-blue-400 opacity-0 group-hover:opacity-100 transition-all rounded hover:bg-gray-100 dark:hover:bg-gray-700"
+                        title="Reassign to different speaker"
+                      >
+                        <ArrowRightLeft className="w-3 h-3" />
+                      </button>
                     )}
                   </div>
                 )}

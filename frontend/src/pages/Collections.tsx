@@ -5,6 +5,39 @@ import { collectionsApi } from '@/api/collections';
 import { Collection } from '@/types';
 import { FolderOpen, Plus, Trash2, Edit2, X, Check, FileText } from 'lucide-react';
 
+const COLOR_PALETTE = [
+  '#3b82f6', // blue
+  '#8b5cf6', // violet
+  '#ec4899', // pink
+  '#ef4444', // red
+  '#f97316', // orange
+  '#eab308', // yellow
+  '#22c55e', // green
+  '#14b8a6', // teal
+  '#06b6d4', // cyan
+  '#6366f1', // indigo
+  '#a855f7', // purple
+  '#64748b', // slate
+];
+
+function ColorPicker({ value, onChange }: { value: string | null; onChange: (color: string) => void }) {
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {COLOR_PALETTE.map((color) => (
+        <button
+          key={color}
+          type="button"
+          onClick={(e) => { e.stopPropagation(); onChange(color); }}
+          className={`w-6 h-6 rounded-full border-2 transition-all hover:scale-110 ${
+            value === color ? 'border-gray-900 dark:border-white scale-110 ring-2 ring-offset-1 ring-gray-400' : 'border-transparent'
+          }`}
+          style={{ backgroundColor: color }}
+        />
+      ))}
+    </div>
+  );
+}
+
 export function Collections() {
   const navigate = useNavigate();
   const [collections, setCollections] = useState<Collection[]>([]);
@@ -13,12 +46,16 @@ export function Collections() {
   // Create form
   const [showCreate, setShowCreate] = useState(false);
   const [newName, setNewName] = useState('');
+  const [newColor, setNewColor] = useState<string>(COLOR_PALETTE[0]);
   const [newDescription, setNewDescription] = useState('');
   const [isCreating, setIsCreating] = useState(false);
 
   // Inline rename
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState('');
+
+  // Color edit
+  const [editingColorId, setEditingColorId] = useState<string | null>(null);
 
   const loadCollections = async () => {
     try {
@@ -41,10 +78,12 @@ export function Collections() {
     try {
       await collectionsApi.create({
         name: newName.trim(),
+        color: newColor,
         description: newDescription.trim() || undefined,
       });
       setNewName('');
       setNewDescription('');
+      setNewColor(COLOR_PALETTE[0]);
       setShowCreate(false);
       await loadCollections();
     } catch (err) {
@@ -76,6 +115,16 @@ export function Collections() {
       await loadCollections();
     } catch (err) {
       console.error('Failed to rename collection:', err);
+    }
+  };
+
+  const handleColorChange = async (id: string, color: string) => {
+    try {
+      await collectionsApi.update(id, { color });
+      setEditingColorId(null);
+      await loadCollections();
+    } catch (err) {
+      console.error('Failed to update color:', err);
     }
   };
 
@@ -113,6 +162,10 @@ export function Collections() {
                   if (e.key === 'Escape') setShowCreate(false);
                 }}
               />
+              <div>
+                <p className="text-xs text-gray-600 dark:text-gray-400 mb-1.5">Color</p>
+                <ColorPicker value={newColor} onChange={setNewColor} />
+              </div>
               <input
                 type="text"
                 value={newDescription}
@@ -156,75 +209,91 @@ export function Collections() {
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {collections.map((collection) => (
-              <div
-                key={collection.id}
-                onClick={() => navigate(`/collections/${collection.id}`)}
-                className="group bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-5 cursor-pointer hover:border-blue-300 dark:hover:border-blue-600 hover:shadow-md transition-all"
-              >
-                <div className="flex items-start justify-between mb-3">
-                  <div className="flex items-center gap-2 min-w-0 flex-1">
-                    <FolderOpen className="w-5 h-5 text-blue-500 flex-shrink-0" />
-                    {editingId === collection.id ? (
-                      <div className="flex items-center gap-1 flex-1" onClick={(e) => e.stopPropagation()}>
-                        <input
-                          type="text"
-                          value={editingName}
-                          onChange={(e) => setEditingName(e.target.value)}
-                          className="flex-1 px-2 py-1 bg-white dark:bg-gray-700 text-gray-900 dark:text-white border border-gray-300 dark:border-gray-600 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          autoFocus
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') handleRename(collection.id);
-                            if (e.key === 'Escape') setEditingId(null);
-                          }}
-                        />
-                        <button onClick={() => handleRename(collection.id)} className="p-1 text-green-500 hover:text-green-600">
-                          <Check className="w-4 h-4" />
-                        </button>
-                        <button onClick={() => setEditingId(null)} className="p-1 text-gray-400 hover:text-gray-600">
-                          <X className="w-4 h-4" />
-                        </button>
-                      </div>
-                    ) : (
-                      <h3 className="font-semibold text-gray-900 dark:text-white truncate">{collection.name}</h3>
-                    )}
+            {collections.map((collection) => {
+              const borderColor = collection.color || '#3b82f6';
+              return (
+                <div
+                  key={collection.id}
+                  onClick={() => navigate(`/collections/${collection.id}`)}
+                  className="group bg-white dark:bg-gray-800 rounded-lg border-l-4 border border-gray-200 dark:border-gray-700 p-5 cursor-pointer hover:shadow-md transition-all"
+                  style={{ borderLeftColor: borderColor }}
+                >
+                  <div className="flex items-start justify-between mb-3">
+                    <div className="flex items-center gap-2 min-w-0 flex-1">
+                      <div
+                        className="w-3 h-3 rounded-full flex-shrink-0 cursor-pointer hover:ring-2 hover:ring-offset-1 hover:ring-gray-400 transition-all"
+                        style={{ backgroundColor: borderColor }}
+                        onClick={(e) => { e.stopPropagation(); setEditingColorId(editingColorId === collection.id ? null : collection.id); }}
+                        title="Change color"
+                      />
+                      {editingId === collection.id ? (
+                        <div className="flex items-center gap-1 flex-1" onClick={(e) => e.stopPropagation()}>
+                          <input
+                            type="text"
+                            value={editingName}
+                            onChange={(e) => setEditingName(e.target.value)}
+                            className="flex-1 px-2 py-1 bg-white dark:bg-gray-700 text-gray-900 dark:text-white border border-gray-300 dark:border-gray-600 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            autoFocus
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') handleRename(collection.id);
+                              if (e.key === 'Escape') setEditingId(null);
+                            }}
+                          />
+                          <button onClick={() => handleRename(collection.id)} className="p-1 text-green-500 hover:text-green-600">
+                            <Check className="w-4 h-4" />
+                          </button>
+                          <button onClick={() => setEditingId(null)} className="p-1 text-gray-400 hover:text-gray-600">
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
+                      ) : (
+                        <h3 className="font-semibold text-gray-900 dark:text-white truncate">{collection.name}</h3>
+                      )}
+                    </div>
+
+                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0" onClick={(e) => e.stopPropagation()}>
+                      <button
+                        onClick={() => { setEditingId(collection.id); setEditingName(collection.name); }}
+                        className="p-1.5 text-gray-400 hover:text-blue-500 rounded transition-colors"
+                        title="Rename"
+                      >
+                        <Edit2 className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onClick={(e) => handleDelete(collection.id, e)}
+                        className="p-1.5 text-gray-400 hover:text-red-500 rounded transition-colors"
+                        title="Delete"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                   </div>
 
-                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0" onClick={(e) => e.stopPropagation()}>
-                    <button
-                      onClick={() => { setEditingId(collection.id); setEditingName(collection.name); }}
-                      className="p-1.5 text-gray-400 hover:text-blue-500 rounded transition-colors"
-                      title="Rename"
-                    >
-                      <Edit2 className="w-3.5 h-3.5" />
-                    </button>
-                    <button
-                      onClick={(e) => handleDelete(collection.id, e)}
-                      className="p-1.5 text-gray-400 hover:text-red-500 rounded transition-colors"
-                      title="Delete"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
+                  {/* Inline color picker */}
+                  {editingColorId === collection.id && (
+                    <div className="mb-3 p-2 bg-gray-50 dark:bg-gray-900/30 rounded-lg" onClick={(e) => e.stopPropagation()}>
+                      <ColorPicker value={collection.color} onChange={(color) => handleColorChange(collection.id, color)} />
+                    </div>
+                  )}
+
+                  {collection.description && (
+                    <p className="text-sm text-gray-500 dark:text-gray-400 mb-3 line-clamp-2">
+                      {collection.description}
+                    </p>
+                  )}
+
+                  <div className="flex items-center gap-2 text-xs text-gray-400 dark:text-gray-500">
+                    <FileText className="w-3.5 h-3.5" />
+                    <span>
+                      {collection.transcription_count} transcription{collection.transcription_count !== 1 ? 's' : ''}
+                    </span>
+                    <span className="ml-auto">
+                      {new Date(collection.updated_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+                    </span>
                   </div>
                 </div>
-
-                {collection.description && (
-                  <p className="text-sm text-gray-500 dark:text-gray-400 mb-3 line-clamp-2">
-                    {collection.description}
-                  </p>
-                )}
-
-                <div className="flex items-center gap-2 text-xs text-gray-400 dark:text-gray-500">
-                  <FileText className="w-3.5 h-3.5" />
-                  <span>
-                    {collection.transcription_count} transcription{collection.transcription_count !== 1 ? 's' : ''}
-                  </span>
-                  <span className="ml-auto">
-                    {new Date(collection.updated_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
-                  </span>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>

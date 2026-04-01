@@ -1,7 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Layout } from '@/components/Layout';
 import { transcriptionsApi } from '@/api/transcriptions';
+import { useAppStore } from '@/store/useAppStore';
 import { Transcription } from '@/types';
 import { format } from 'date-fns';
 import {
@@ -14,14 +15,22 @@ import {
   FileText,
   Inbox,
   Clock,
+  Unplug,
 } from 'lucide-react';
 
 export function Transcriptions() {
   const navigate = useNavigate();
+  const recordings = useAppStore((s) => s.recordings);
   const [transcriptions, setTranscriptions] = useState<Transcription[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
+
+  // Set of filenames currently on the device — used to detect orphaned transcriptions
+  const deviceFileNames = useMemo(
+    () => new Set(recordings.map((r) => r.fileName)),
+    [recordings],
+  );
 
   useEffect(() => {
     loadTranscriptions();
@@ -188,9 +197,20 @@ export function Transcriptions() {
                             <FileText className="w-4 h-4 text-primary-600 dark:text-primary-400" />
                           </div>
                           <div className="min-w-0">
-                            <span className="font-medium text-gray-900 dark:text-white group-hover:text-primary-600 dark:group-hover:text-primary-400 transition-colors duration-150 block truncate">
-                              {t.title || t.original_filename}
-                            </span>
+                            <div className="flex items-center gap-2">
+                              <span className="font-medium text-gray-900 dark:text-white group-hover:text-primary-600 dark:group-hover:text-primary-400 transition-colors duration-150 truncate">
+                                {t.title || t.original_filename}
+                              </span>
+                              {deviceFileNames.size > 0 && !deviceFileNames.has(t.original_filename) && (
+                                <span
+                                  className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 flex-shrink-0"
+                                  title="Source recording no longer on device"
+                                >
+                                  <Unplug className="w-3 h-3" />
+                                  Orphan
+                                </span>
+                              )}
+                            </div>
                             {t.title && (
                               <span className="text-xs text-gray-500 dark:text-gray-400 block truncate">
                                 {t.original_filename}

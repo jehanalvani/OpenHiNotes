@@ -4,10 +4,11 @@ import { useDeviceConnection } from '@/hooks/useDeviceConnection';
 import { useAppStore } from '@/store/useAppStore';
 import { TranscribeModal } from '@/components/TranscribeModal';
 import { AudioPlayer } from '@/components/AudioPlayer';
-import { Transcription } from '@/types';
+import { Collection } from '@/types';
 import { deviceService } from '@/services/deviceService';
 import { transcriptionsApi } from '@/api/transcriptions';
-import { Play, Download, Trash2, Zap, FileText, AlertCircle, Pencil, X, CheckCircle } from 'lucide-react';
+import { collectionsApi } from '@/api/collections';
+import { Play, Download, Trash2, Zap, FileText, AlertCircle, Pencil, X, CheckCircle, FolderOpen } from 'lucide-react';
 import { format } from 'date-fns';
 
 export function Recordings() {
@@ -34,10 +35,14 @@ export function Recordings() {
   const [downloadProgress, setDownloadProgress] = useState<Record<string, number>>({});
   const [playingFile, setPlayingFile] = useState<{ blob: Blob; name: string } | null>(null);
   const [autoSummarize, setAutoSummarize] = useState(false);
-  const [editingAlias, setEditingAlias] = useState<string | null>(null); // fileName being edited
+  const [editingAlias, setEditingAlias] = useState<string | null>(null);
   const [aliasInput, setAliasInput] = useState('');
   const aliasInputRef = useRef<HTMLInputElement>(null);
   const [transcriptMap, setTranscriptMap] = useState<Record<string, { id: string; status: string; title: string | null }>>({});
+
+  // Collections for batch assign
+  const [collections, setCollections] = useState<Collection[]>([]);
+  const [showCollectionPicker, setShowCollectionPicker] = useState(false);
 
   // Orphan alias detection
   const currentFileNames = recordings.map((r) => r.fileName);
@@ -49,7 +54,6 @@ export function Recordings() {
   const startEditingAlias = useCallback((fileName: string) => {
     setEditingAlias(fileName);
     setAliasInput(recordingAliases[fileName] || '');
-    // Focus the input after render
     setTimeout(() => aliasInputRef.current?.focus(), 0);
   }, [recordingAliases]);
 
@@ -99,7 +103,11 @@ export function Recordings() {
     transcriptionsApi.checkByFilenames(filenames).then(setTranscriptMap).catch(console.error);
   }, [recordings]);
 
-  /** Download a recording or return the cached blob if already downloaded. */
+  // Load collections for batch assign
+  useEffect(() => {
+    collectionsApi.list().then(setCollections).catch(console.error);
+  }, []);
+
   const getOrDownloadBlob = async (
     recordingId: string, fileName: string, fileSize: number, fileVersion?: number
   ): Promise<Blob | null> => {
@@ -108,11 +116,9 @@ export function Recordings() {
       setDownloadProgress((prev) => ({ ...prev, [recordingId]: 100 }));
       return cached;
     }
-
     const blob = await downloadRecording(fileName, fileSize, (percent) => {
       setDownloadProgress((prev) => ({ ...prev, [recordingId]: percent }));
     }, fileVersion);
-
     if (blob) {
       deviceService.setCachedBlob(fileName, blob);
     }
@@ -137,9 +143,92 @@ export function Recordings() {
   };
 
   const handleDeleteRecording = async (fileName: string) => {
-    if (window.confirm(`Delete "${fileName}"?`)) {
-      await deleteRecording(fileName);
+    const transcript = transcriptMap[fileName];
+    let deleteTranscript = false;
+
+    if (transcript) {
+      const choice = window.confirm(
+        `Delete recording "${recordingAliases[fileName] || fileName}"?\n\nThis recording has a linked transcription. Click OK to also delete the transcription, or Cancel to keep it.`
+      );
+      if (!choice) {
+        // Ask if they still want to delete just the recording
+        const justRecording = window.confirm('Delete only the recording and keep the transcription?');
+        if (!justRecording) return;
+      } else {
+        deleteTranscript = true;
+      }
+    } else {
+      if (!window.confirm(`Delete "${recordingAliases[fileName] || fileName}"?`)) return;
     }
+
+    await deleteRecording(fileName);
+
+    if (deleteTranscript && transcript) {
+      try {
+        await transcriptionsApi.deleteTranscription(transcript.id);
+        setTranscriptMap((prev) => {
+          const next = { ...prev };
+          delete next[fileName];
+          return next;
+        });
+      } catch (err) {
+        console.error('Failed to delete transcript:', err);
+      }
+    }
+  };
+
+  const handleBatchDelete = async () => {
+    const selected = recordings.filter((r) => selectedRecordings.includes(r.id));
+    const withTranscripts = selected.filter((r) => transcriptMap[r.fileName]);
+    const count = selected.length;
+
+    let deleteTranscripts = false;
+    if (withTranscripts.length > 0) {
+      deleteTranscripts = window.confirm(
+        `Delete ${count} recording${count !== 1 ? 's' : ''}?\n\n${withTranscripts.length} of them have linked transcriptions. Click OK to also delete transcriptions, or Cancel to keep them.`
+      );
+      if (!deleteTranscripts) {
+        if (!window.confirm(`Delete ${count} recording${count !== 1 ? 's' : ''} but keep their transcriptions?`)) return;
+      }
+    } else {
+      if (!window.confirm(`Delete ${count} recording${count !== 1 ? 's' : ''}?`)) return;
+    }
+
+    for (const rec of selected) {
+      try {
+        await deleteRecording(rec.fileName);
+        if (deleteTranscripts && transcriptMap[rec.fileName]) {
+          await transcriptionsApi.deleteTranscription(transcriptMap[rec.fileName].id);
+        }
+      } catch (err) {
+        console.error(`Failed to delete ${rec.fileName}:`, err);
+      }
+    }
+
+    clearSelectedRecordings();
+    await refreshRecordings();
+  };
+
+  const handleBatchAddToCollection = async (collectionId: string) => {
+    const selected = recordings.filter((r) => selectedRecordings.includes(r.id));
+    let assignedCount = 0;
+
+    for (const rec of selected) {
+      const transcript = transcriptMap[rec.fileName];
+      if (transcript) {
+        try {
+          await collectionsApi.assignTranscription(collectionId, transcript.id);
+          assignedCount++;
+        } catch (err) {
+          console.error(`Failed to assign ${rec.fileName}:`, err);
+        }
+      }
+    }
+
+    setShowCollectionPicker(false);
+    // Reload collections for updated count
+    collectionsApi.list().then(setCollections).catch(console.error);
+    alert(`Added ${assignedCount} transcription${assignedCount !== 1 ? 's' : ''} to collection.${selected.length - assignedCount > 0 ? ` ${selected.length - assignedCount} recording(s) had no transcription and were skipped.` : ''}`);
   };
 
   const handleSelectAll = () => {
@@ -180,6 +269,8 @@ export function Recordings() {
   const storagePercent = device.storageInfo
     ? (device.storageInfo.usedSpace / device.storageInfo.totalSpace) * 100
     : 0;
+
+  const hasSelection = selectedRecordings.length > 0;
 
   return (
     <Layout title="Recordings" deviceConnected={device?.connected}>
@@ -255,6 +346,62 @@ export function Recordings() {
         </div>
       )}
 
+      {/* Batch action bar */}
+      {hasSelection && (
+        <div className="mb-4 flex items-center gap-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg px-4 py-3">
+          <span className="text-sm font-medium text-blue-700 dark:text-blue-300">
+            {selectedRecordings.length} selected
+          </span>
+          <div className="flex items-center gap-2 ml-auto">
+            <div className="relative">
+              <button
+                onClick={() => setShowCollectionPicker(!showCollectionPicker)}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+              >
+                <FolderOpen className="w-4 h-4" />
+                Add to Collection
+              </button>
+              {showCollectionPicker && (
+                <div className="absolute right-0 top-full mt-1 w-56 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-20 py-1 max-h-64 overflow-y-auto">
+                  {collections.length === 0 ? (
+                    <p className="px-3 py-2 text-sm text-gray-500">No collections yet</p>
+                  ) : (
+                    collections.map((c) => (
+                      <button
+                        key={c.id}
+                        onClick={() => handleBatchAddToCollection(c.id)}
+                        className="w-full text-left px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2"
+                      >
+                        <div
+                          className="w-3 h-3 rounded-full flex-shrink-0"
+                          style={{ backgroundColor: c.color || '#3b82f6' }}
+                        />
+                        <span className="truncate">{c.name}</span>
+                        <span className="text-xs text-gray-400 ml-auto">{c.transcription_count}</span>
+                      </button>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
+            <button
+              onClick={handleBatchDelete}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-medium transition-colors"
+            >
+              <Trash2 className="w-4 h-4" />
+              Delete Selected
+            </button>
+            <button
+              onClick={clearSelectedRecordings}
+              className="p-1.5 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 rounded transition-colors"
+              title="Clear selection"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
         <div className="p-6 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
           <h2 className="text-lg font-bold text-gray-900 dark:text-white">Device Recordings</h2>
@@ -316,7 +463,9 @@ export function Recordings() {
                   return (
                     <tr
                       key={recording.id}
-                      className="hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                      className={`hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors ${
+                        selectedRecordings.includes(recording.id) ? 'bg-blue-50/50 dark:bg-blue-900/10' : ''
+                      }`}
                     >
                       <td className="px-6 py-4">
                         <input

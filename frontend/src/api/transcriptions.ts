@@ -168,6 +168,17 @@ export const transcriptionsApi = {
     return apiClient.patch<Transcription>(`/transcriptions/${id}/title`, { title });
   },
 
+  async reassignSegmentSpeaker(
+    id: string,
+    segmentIndices: number[],
+    newSpeaker: string,
+  ): Promise<Transcription> {
+    return apiClient.patch<Transcription>(`/transcriptions/${id}/segments/reassign-speaker`, {
+      segment_indices: segmentIndices,
+      new_speaker: newSpeaker,
+    });
+  },
+
   async deleteTranscription(id: string): Promise<void> {
     return apiClient.delete<void>(`/transcriptions/${id}`);
   },

@@ -26,6 +26,12 @@ class TitleUpdate(BaseModel):
     title: Optional[str] = None
 
 
+class SegmentSpeakerReassign(BaseModel):
+    """Schema for reassigning a speaker on specific segments."""
+    segment_indices: List[int]
+    new_speaker: str
+
+
 class SegmentResponse(BaseModel):
     """Schema for a transcription segment."""
     start: float

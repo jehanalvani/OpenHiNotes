@@ -10,13 +10,13 @@ export const collectionsApi = {
     return apiClient.get<Collection>(`/collections/${id}`);
   },
 
-  async create(data: { name: string; description?: string }): Promise<Collection> {
+  async create(data: { name: string; color?: string; description?: string }): Promise<Collection> {
     return apiClient.post<Collection>('/collections', data);
   },
 
   async update(
     id: string,
-    data: { name?: string; description?: string },
+    data: { name?: string; color?: string; description?: string },
   ): Promise<Collection> {
     return apiClient.patch<Collection>(`/collections/${id}`, data);
   },

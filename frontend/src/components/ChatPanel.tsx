@@ -166,6 +166,8 @@ export function ChatPanel({
 
       setShowSaveDialog(false);
       await loadSavedConversations();
+      // Auto-open conversation panel so the user sees the saved item
+      setShowConversationPanel(true);
     } catch (err) {
       console.error('Failed to save conversation:', err);
     } finally {
