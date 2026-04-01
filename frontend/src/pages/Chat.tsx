@@ -85,6 +85,7 @@ export function Chat() {
         <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 h-96 md:h-[600px]">
           <ChatPanel
             transcriptionId={selectedTranscriptionId}
+            scopeToTranscription={false}
             transcriptionNames={transcriptions.reduce<Record<string, string>>((acc, t) => {
               acc[t.id] = t.title || t.original_filename;
               return acc;

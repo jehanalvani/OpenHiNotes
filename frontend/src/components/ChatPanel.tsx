@@ -10,7 +10,14 @@ import { formatMarkdown } from '@/utils/formatMarkdown';
 
 interface ChatPanelProps {
   transcriptionId?: string;
-  /** Optional map of transcription_id -> display name (alias/title) for folder labels */
+  /**
+   * When true (default when transcriptionId is set), the conversation list
+   * only shows chats linked to the current transcriptionId — no folder
+   * grouping. When false, it loads ALL conversations and groups them by
+   * transcript folder.
+   */
+  scopeToTranscription?: boolean;
+  /** Map of transcription_id -> display name for folder labels (only used when scopeToTranscription=false) */
   transcriptionNames?: Record<string, string>;
 }
 
@@ -49,13 +56,11 @@ function groupByTranscription(
 
   const result: { label: string; transcriptionId: string | null; items: ChatConversationListItem[] }[] = [];
 
-  // Put the group matching current context first, then named groups, then general
   for (const [tid, items] of groups) {
     const label = tid ? (nameMap[tid] || 'Unknown transcript') : 'General';
     result.push({ label, transcriptionId: tid, items });
   }
 
-  // Sort: general last, others alphabetically
   result.sort((a, b) => {
     if (!a.transcriptionId) return 1;
     if (!b.transcriptionId) return -1;
@@ -65,7 +70,14 @@ function groupByTranscription(
   return result;
 }
 
-export function ChatPanel({ transcriptionId, transcriptionNames = {} }: ChatPanelProps) {
+export function ChatPanel({
+  transcriptionId,
+  scopeToTranscription,
+  transcriptionNames = {},
+}: ChatPanelProps) {
+  // Default: scope to transcript when inside a transcript view
+  const isScoped = scopeToTranscription ?? !!transcriptionId;
+
   const [messages, setMessages] = useState<DisplayMessage[]>([]);
   const [input, setInput] = useState('');
   const [isStreaming, setIsStreaming] = useState(false);
@@ -73,13 +85,13 @@ export function ChatPanel({ transcriptionId, transcriptionNames = {} }: ChatPane
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
 
-  // Smart auto-scroll: only scroll if user is near the bottom
+  // Smart auto-scroll
   const userHasScrolledUp = useRef(false);
 
   const handleScroll = useCallback(() => {
     const container = messagesContainerRef.current;
     if (!container) return;
-    const threshold = 80; // px from bottom
+    const threshold = 80;
     const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < threshold;
     userHasScrolledUp.current = !isNearBottom;
   }, []);
@@ -90,17 +102,15 @@ export function ChatPanel({ transcriptionId, transcriptionNames = {} }: ChatPane
     }
   }, [messages, awaitingFirstChunk]);
 
-  // Reset scroll lock when streaming finishes
   useEffect(() => {
     if (!isStreaming) {
-      // After streaming ends, auto-scroll to bottom
       messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
       userHasScrolledUp.current = false;
     }
   }, [isStreaming]);
 
   // Conversation persistence state
-  const [allConversations, setAllConversations] = useState<ChatConversationListItem[]>([]);
+  const [conversations, setConversations] = useState<ChatConversationListItem[]>([]);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [showConversationPanel, setShowConversationPanel] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -109,16 +119,18 @@ export function ChatPanel({ transcriptionId, transcriptionNames = {} }: ChatPane
   const [showSaveDialog, setShowSaveDialog] = useState(false);
   const [collapsedFolders, setCollapsedFolders] = useState<Set<string>>(new Set());
 
-  // Load ALL conversations (not filtered by transcription) so we can show folder grouping
   useEffect(() => {
     loadSavedConversations();
-  }, [transcriptionId]);
+  }, [transcriptionId, isScoped]);
 
   const loadSavedConversations = async () => {
     setIsLoadingConversations(true);
     try {
-      const convos = await chatConversationsApi.list();
-      setAllConversations(convos);
+      // If scoped, only fetch conversations for this transcript; otherwise fetch all
+      const convos = isScoped
+        ? await chatConversationsApi.list(transcriptionId)
+        : await chatConversationsApi.list();
+      setConversations(convos);
     } catch (err) {
       console.error('Failed to load conversations:', err);
     } finally {
@@ -221,16 +233,13 @@ export function ChatPanel({ transcriptionId, transcriptionNames = {} }: ChatPane
   const handleSendMessage = async () => {
     if (!input.trim() || isStreaming) return;
 
-    const userMessage: DisplayMessage = {
-      role: 'user',
-      content: input,
-    };
+    const userMessage: DisplayMessage = { role: 'user', content: input };
 
     setInput('');
     setMessages((prev) => [...prev, userMessage]);
     setIsStreaming(true);
     setAwaitingFirstChunk(true);
-    userHasScrolledUp.current = false; // reset on new send
+    userHasScrolledUp.current = false;
 
     try {
       const messagesToSend: ChatMessage[] = [...messages.filter(m => !m.isError), userMessage].map(
@@ -241,10 +250,7 @@ export function ChatPanel({ transcriptionId, transcriptionNames = {} }: ChatPane
       let assistantMessage = '';
       let receivedContent = false;
 
-      setMessages((prev) => [
-        ...prev,
-        { role: 'assistant', content: '' },
-      ]);
+      setMessages((prev) => [...prev, { role: 'assistant', content: '' }]);
 
       for await (const chunk of chatApi.parseSSEStream(stream)) {
         if (chunk.startsWith(SSE_ERROR_PREFIX)) {
@@ -252,11 +258,7 @@ export function ChatPanel({ transcriptionId, transcriptionNames = {} }: ChatPane
           setAwaitingFirstChunk(false);
           setMessages((prev) => {
             const updated = [...prev];
-            updated[updated.length - 1] = {
-              role: 'assistant',
-              content: errorText,
-              isError: true,
-            };
+            updated[updated.length - 1] = { role: 'assistant', content: errorText, isError: true };
             return updated;
           });
           setIsStreaming(false);
@@ -271,10 +273,7 @@ export function ChatPanel({ transcriptionId, transcriptionNames = {} }: ChatPane
         assistantMessage += chunk;
         setMessages((prev) => {
           const updated = [...prev];
-          updated[updated.length - 1] = {
-            role: 'assistant',
-            content: assistantMessage,
-          };
+          updated[updated.length - 1] = { role: 'assistant', content: assistantMessage };
           return updated;
         });
       }
@@ -290,17 +289,10 @@ export function ChatPanel({ transcriptionId, transcriptionNames = {} }: ChatPane
         const last = prev[prev.length - 1];
         if (last && last.role === 'assistant' && last.content === '') {
           const updated = [...prev];
-          updated[updated.length - 1] = {
-            role: 'assistant',
-            content: errorText,
-            isError: true,
-          };
+          updated[updated.length - 1] = { role: 'assistant', content: errorText, isError: true };
           return updated;
         }
-        return [
-          ...prev,
-          { role: 'assistant', content: errorText, isError: true },
-        ];
+        return [...prev, { role: 'assistant', content: errorText, isError: true }];
       });
     }
   };
@@ -313,7 +305,125 @@ export function ChatPanel({ transcriptionId, transcriptionNames = {} }: ChatPane
   };
 
   const hasMessages = messages.filter((m) => !m.isError).length > 0;
-  const conversationGroups = groupByTranscription(allConversations, transcriptionNames);
+  const conversationGroups = isScoped ? [] : groupByTranscription(conversations, transcriptionNames);
+
+  // ── Render helpers ──
+
+  /** Flat conversation list (for transcript-scoped view) */
+  const renderFlatList = () => (
+    <div className="space-y-1">
+      {conversations.map((c) => (
+        <div
+          key={c.id}
+          onClick={() => handleLoadConversation(c.id)}
+          className={`group flex items-center gap-3 px-4 py-3 rounded-lg cursor-pointer transition-all ${
+            activeConversationId === c.id
+              ? 'bg-blue-100 dark:bg-blue-900/40 border-l-3 border-blue-500'
+              : 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:border-blue-300 dark:hover:border-blue-600 hover:shadow-sm'
+          }`}
+        >
+          <MessageSquare className={`w-4 h-4 flex-shrink-0 ${
+            activeConversationId === c.id ? 'text-blue-500' : 'text-gray-400'
+          }`} />
+          <div className="min-w-0 flex-1">
+            <p className={`text-sm truncate ${
+              activeConversationId === c.id
+                ? 'font-semibold text-blue-700 dark:text-blue-300'
+                : 'font-medium text-gray-800 dark:text-gray-200'
+            }`}>
+              {c.title}
+            </p>
+            <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
+              {new Date(c.updated_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+            </p>
+          </div>
+          <button
+            onClick={(e) => handleDeleteConversation(c.id, e)}
+            className="p-1.5 text-gray-300 dark:text-gray-600 hover:text-red-500 dark:hover:text-red-400 rounded opacity-0 group-hover:opacity-100 transition-all flex-shrink-0"
+            title="Delete"
+          >
+            <Trash2 className="w-4 h-4" />
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+
+  /** Folder-grouped conversation list (for Chat page) */
+  const renderFolderList = () => (
+    <div className="space-y-1">
+      {conversationGroups.map((group) => {
+        const folderKey = group.transcriptionId || '__general__';
+        const isCollapsed = collapsedFolders.has(folderKey);
+        const isCurrentContext = group.transcriptionId === (transcriptionId || null);
+
+        return (
+          <div key={folderKey}>
+            <button
+              onClick={() => toggleFolder(folderKey)}
+              className={`w-full flex items-center gap-2 px-3 py-2.5 rounded-lg text-left transition-colors ${
+                isCurrentContext
+                  ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300'
+                  : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
+              }`}
+            >
+              {isCollapsed ? (
+                <ChevronRight className="w-4 h-4 flex-shrink-0" />
+              ) : (
+                <ChevronDown className="w-4 h-4 flex-shrink-0" />
+              )}
+              <FolderOpen className="w-4 h-4 flex-shrink-0" />
+              <span className="text-sm font-semibold truncate flex-1">{group.label}</span>
+              <span className="text-xs text-gray-400 dark:text-gray-500 bg-gray-200 dark:bg-gray-700 px-1.5 py-0.5 rounded-full flex-shrink-0">
+                {group.items.length}
+              </span>
+            </button>
+
+            {!isCollapsed && (
+              <div className="ml-6 mt-1 space-y-1">
+                {group.items.map((c) => (
+                  <div
+                    key={c.id}
+                    onClick={() => handleLoadConversation(c.id)}
+                    className={`group flex items-center gap-2 px-3 py-2.5 rounded-lg cursor-pointer transition-all ${
+                      activeConversationId === c.id
+                        ? 'bg-blue-100 dark:bg-blue-900/40 border-l-2 border-blue-500'
+                        : 'hover:bg-gray-100 dark:hover:bg-gray-700/60 border-l-2 border-transparent'
+                    }`}
+                  >
+                    <MessageSquare className={`w-3.5 h-3.5 flex-shrink-0 ${
+                      activeConversationId === c.id ? 'text-blue-500' : 'text-gray-400 dark:text-gray-500'
+                    }`} />
+                    <div className="min-w-0 flex-1">
+                      <p className={`text-sm truncate ${
+                        activeConversationId === c.id
+                          ? 'font-semibold text-blue-700 dark:text-blue-300'
+                          : 'font-medium text-gray-800 dark:text-gray-200'
+                      }`}>
+                        {c.title}
+                      </p>
+                      <p className="text-xs text-gray-400 dark:text-gray-500">
+                        {new Date(c.updated_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+                      </p>
+                    </div>
+                    <button
+                      onClick={(e) => handleDeleteConversation(c.id, e)}
+                      className="p-1 text-gray-300 dark:text-gray-600 hover:text-red-500 dark:hover:text-red-400 rounded opacity-0 group-hover:opacity-100 transition-all flex-shrink-0"
+                      title="Delete"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+
+  const conversationCount = conversations.length;
 
   return (
     <div className="flex flex-col h-full max-h-[600px] bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
@@ -332,7 +442,7 @@ export function ChatPanel({ transcriptionId, transcriptionNames = {} }: ChatPane
         <div className="flex items-center gap-1">
           <button
             onClick={() => setShowConversationPanel(!showConversationPanel)}
-            className={`p-1.5 rounded transition-colors ${
+            className={`p-1.5 rounded transition-colors flex items-center gap-1 ${
               showConversationPanel
                 ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400'
                 : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-600'
@@ -340,6 +450,9 @@ export function ChatPanel({ transcriptionId, transcriptionNames = {} }: ChatPane
             title="Saved conversations"
           >
             <FolderOpen className="w-4 h-4" />
+            {conversationCount > 0 && (
+              <span className="text-xs font-medium">{conversationCount}</span>
+            )}
           </button>
           {hasMessages && (
             <button
@@ -390,99 +503,40 @@ export function ChatPanel({ transcriptionId, transcriptionNames = {} }: ChatPane
         </div>
       )}
 
-      {/* Conversation panel (redesigned: larger, folder grouping, clearer) */}
+      {/* Conversation panel */}
       {showConversationPanel && (
-        <div className="border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/30 max-h-72 overflow-y-auto">
+        <div className="border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/30 max-h-96 overflow-y-auto">
           {/* Panel header */}
-          <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700 sticky top-0 bg-gray-50 dark:bg-gray-900/30 z-10">
-            <span className="text-sm font-bold text-gray-800 dark:text-gray-200">Saved Conversations</span>
+          <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 dark:border-gray-700/60 sticky top-0 bg-gray-50 dark:bg-gray-900/50 backdrop-blur-sm z-10">
+            <span className="text-sm font-bold text-gray-800 dark:text-gray-200">
+              {isScoped ? 'Conversations' : 'All Conversations'}
+            </span>
             <button
               onClick={handleNewConversation}
-              className="flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30 hover:bg-blue-100 dark:hover:bg-blue-900/50 rounded-md transition-colors"
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30 hover:bg-blue-100 dark:hover:bg-blue-900/50 rounded-lg transition-colors"
             >
-              <Plus className="w-3 h-3" />
+              <Plus className="w-3.5 h-3.5" />
               New Chat
             </button>
           </div>
 
-          <div className="p-2">
+          <div className="p-3">
             {isLoadingConversations ? (
-              <p className="text-sm text-gray-500 dark:text-gray-400 px-2 py-3 text-center">Loading...</p>
-            ) : allConversations.length === 0 ? (
-              <p className="text-sm text-gray-500 dark:text-gray-400 px-2 py-4 text-center">
-                No saved conversations yet. Use the save button to keep a chat.
-              </p>
-            ) : (
-              <div className="space-y-1">
-                {conversationGroups.map((group) => {
-                  const folderKey = group.transcriptionId || '__general__';
-                  const isCollapsed = collapsedFolders.has(folderKey);
-                  const isCurrentContext = group.transcriptionId === (transcriptionId || null);
-
-                  return (
-                    <div key={folderKey}>
-                      {/* Folder header */}
-                      <button
-                        onClick={() => toggleFolder(folderKey)}
-                        className={`w-full flex items-center gap-2 px-3 py-2 rounded-md text-left transition-colors ${
-                          isCurrentContext
-                            ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300'
-                            : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
-                        }`}
-                      >
-                        {isCollapsed ? (
-                          <ChevronRight className="w-3.5 h-3.5 flex-shrink-0" />
-                        ) : (
-                          <ChevronDown className="w-3.5 h-3.5 flex-shrink-0" />
-                        )}
-                        <FolderOpen className="w-3.5 h-3.5 flex-shrink-0" />
-                        <span className="text-xs font-semibold truncate flex-1">{group.label}</span>
-                        <span className="text-xs text-gray-400 dark:text-gray-500 flex-shrink-0">
-                          {group.items.length}
-                        </span>
-                      </button>
-
-                      {/* Folder contents */}
-                      {!isCollapsed && (
-                        <div className="ml-5 mt-0.5 space-y-0.5">
-                          {group.items.map((c) => (
-                            <div
-                              key={c.id}
-                              onClick={() => handleLoadConversation(c.id)}
-                              className={`flex items-center gap-2 px-3 py-2 rounded-md cursor-pointer transition-all ${
-                                activeConversationId === c.id
-                                  ? 'bg-blue-100 dark:bg-blue-900/40 border-l-2 border-blue-500'
-                                  : 'hover:bg-gray-100 dark:hover:bg-gray-700/60 border-l-2 border-transparent'
-                              }`}
-                            >
-                              <MessageSquare className="w-3.5 h-3.5 text-gray-400 dark:text-gray-500 flex-shrink-0" />
-                              <div className="min-w-0 flex-1">
-                                <p className={`text-sm truncate ${
-                                  activeConversationId === c.id
-                                    ? 'font-semibold text-blue-700 dark:text-blue-300'
-                                    : 'font-medium text-gray-800 dark:text-gray-200'
-                                }`}>
-                                  {c.title}
-                                </p>
-                                <p className="text-xs text-gray-400 dark:text-gray-500">
-                                  {new Date(c.updated_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
-                                </p>
-                              </div>
-                              <button
-                                onClick={(e) => handleDeleteConversation(c.id, e)}
-                                className="p-1 text-gray-400 hover:text-red-500 rounded opacity-0 group-hover:opacity-100 hover:opacity-100 transition-all flex-shrink-0"
-                                title="Delete"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
+              <p className="text-sm text-gray-500 dark:text-gray-400 px-2 py-4 text-center">Loading...</p>
+            ) : conversations.length === 0 ? (
+              <div className="text-center py-6 px-4">
+                <MessageSquare className="w-8 h-8 text-gray-300 dark:text-gray-600 mx-auto mb-2" />
+                <p className="text-sm text-gray-500 dark:text-gray-400">
+                  No saved conversations yet.
+                </p>
+                <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+                  Use the <Save className="w-3 h-3 inline" /> button to save a chat.
+                </p>
               </div>
+            ) : isScoped ? (
+              renderFlatList()
+            ) : (
+              renderFolderList()
             )}
           </div>
         </div>
