@@ -10,6 +10,7 @@ import { templatesApi } from '@/api/templates';
 import { Transcription, Summary, SummaryTemplate } from '@/types';
 import { format } from 'date-fns';
 import { Save, Loader, Plus, Pencil } from 'lucide-react';
+import { formatMarkdown } from '@/utils/formatMarkdown';
 
 export function TranscriptionDetail() {
   const { id } = useParams<{ id: string }>();
@@ -297,9 +298,10 @@ export function TranscriptionDetail() {
                         {format(new Date(summary.created_at), 'MMM d, yyyy HH:mm')} •{' '}
                         {summary.model_used}
                       </p>
-                      <p className="text-sm text-gray-700 dark:text-gray-300">
-                        {summary.content}
-                      </p>
+                      <div
+                        className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed prose-sm"
+                        dangerouslySetInnerHTML={{ __html: formatMarkdown(summary.content) }}
+                      />
                     </div>
                   ))}
                 </div>

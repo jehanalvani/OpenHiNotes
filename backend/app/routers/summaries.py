@@ -46,6 +46,26 @@ async def create_summary(
             detail="Transcription has no text content",
         )
 
+    # Build speaker-annotated transcript text if segments and speakers are available
+    transcript_text = transcription.text
+    if transcription.segments and transcription.speakers:
+        speaker_map = transcription.speakers or {}
+        annotated_parts = []
+        prev_speaker = None
+        for seg in transcription.segments:
+            speaker_id = seg.get("speaker")
+            speaker_name = speaker_map.get(speaker_id, speaker_id) if speaker_id else None
+            text = seg.get("text", "").strip()
+            if not text:
+                continue
+            if speaker_name and speaker_name != prev_speaker:
+                annotated_parts.append(f"\n{speaker_name}: {text}")
+                prev_speaker = speaker_name
+            else:
+                annotated_parts.append(f" {text}")
+        if annotated_parts:
+            transcript_text = "".join(annotated_parts).strip()
+
     # Get prompt - either from template or custom
     prompt = None
     template_id = None
@@ -75,7 +95,7 @@ async def create_summary(
     # Create summary via LLM
     try:
         summary_text, model_used = await LLMService.create_summary(
-            transcription.text, prompt, summary_create.custom_prompt, db=db
+            transcript_text, prompt, summary_create.custom_prompt, db=db
         )
     except Exception as e:
         raise HTTPException(

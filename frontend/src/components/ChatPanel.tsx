@@ -1,61 +1,13 @@
 import { useState, useRef, useEffect } from 'react';
-import { Send, AlertCircle } from 'lucide-react';
+import { Send, AlertCircle, Save, FolderOpen, Trash2, X } from 'lucide-react';
 import { ChatMessage } from '@/types';
 import { chatApi, SSE_ERROR_PREFIX } from '@/api/chat';
-
-/** Lightweight markdown-to-HTML for assistant messages. */
-function formatMarkdown(text: string): string {
-  // First, extract code blocks to protect them from other transformations
-  const codeBlocks: string[] = [];
-  let processed = text.replace(/```(\w*)\n?([\s\S]*?)```/g, (_match, _lang, code) => {
-    const idx = codeBlocks.length;
-    codeBlocks.push(
-      `<pre class="bg-gray-900 dark:bg-gray-950 text-gray-100 rounded-lg p-3 my-2 overflow-x-auto text-xs font-mono whitespace-pre">${code
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .trimEnd()}</pre>`
-    );
-    return `__CODE_BLOCK_${idx}__`;
-  });
-
-  // Escape HTML in the rest
-  processed = processed
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
-
-  processed = processed
-    // Inline code: `code`
-    .replace(/`([^`]+)`/g, '<code class="bg-gray-200 dark:bg-gray-600 px-1.5 py-0.5 rounded text-xs font-mono">$1</code>')
-    // Headers: ### h3, ## h2, # h1
-    .replace(/^### (.+)$/gm, '<h4 class="font-semibold text-sm mt-3 mb-1">$1</h4>')
-    .replace(/^## (.+)$/gm, '<h3 class="font-bold text-sm mt-3 mb-1">$1</h3>')
-    .replace(/^# (.+)$/gm, '<h2 class="font-bold text-base mt-3 mb-1">$1</h2>')
-    // Horizontal rule: --- or ***
-    .replace(/^[-*]{3,}$/gm, '<hr class="border-gray-300 dark:border-gray-600 my-2"/>')
-    // Bold: **text** or __text__
-    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-    .replace(/__(.+?)__/g, '<strong>$1</strong>')
-    // Italic: *text* or _text_
-    .replace(/(?<!\w)\*(.+?)\*(?!\w)/g, '<em>$1</em>')
-    .replace(/(?<!\w)_(.+?)_(?!\w)/g, '<em>$1</em>')
-    // Unordered list items: lines starting with "- " or "* "
-    .replace(/^[\s]*[-*]\s+(.+)$/gm, '<li>$1</li>')
-    // Ordered list items: lines starting with "1. ", "2. ", etc.
-    .replace(/^[\s]*(\d+)\.\s+(.+)$/gm, '<li>$2</li>')
-    // Wrap consecutive <li> in <ul>
-    .replace(/((?:<li>.*<\/li>\n?)+)/g, '<ul class="list-disc pl-4 my-1 space-y-0.5">$1</ul>')
-    // Line breaks for remaining newlines (but not inside tags)
-    .replace(/\n/g, '<br/>');
-
-  // Restore code blocks
-  codeBlocks.forEach((block, idx) => {
-    processed = processed.replace(`__CODE_BLOCK_${idx}__`, block);
-  });
-
-  return processed;
-}
+import {
+  chatConversationsApi,
+  ChatConversationListItem,
+  ChatConversation,
+} from '@/api/chatConversations';
+import { formatMarkdown } from '@/utils/formatMarkdown';
 
 interface ChatPanelProps {
   transcriptionId?: string;
@@ -88,9 +40,120 @@ export function ChatPanel({ transcriptionId }: ChatPanelProps) {
   const [awaitingFirstChunk, setAwaitingFirstChunk] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  // Conversation persistence state
+  const [savedConversations, setSavedConversations] = useState<ChatConversationListItem[]>([]);
+  const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
+  const [showConversationList, setShowConversationList] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isLoadingConversations, setIsLoadingConversations] = useState(false);
+  const [saveTitle, setSaveTitle] = useState('');
+  const [showSaveDialog, setShowSaveDialog] = useState(false);
+
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, awaitingFirstChunk]);
+
+  // Load saved conversations when panel opens or transcription changes
+  useEffect(() => {
+    loadSavedConversations();
+  }, [transcriptionId]);
+
+  const loadSavedConversations = async () => {
+    setIsLoadingConversations(true);
+    try {
+      const convos = await chatConversationsApi.list(transcriptionId);
+      setSavedConversations(convos);
+    } catch (err) {
+      console.error('Failed to load conversations:', err);
+    } finally {
+      setIsLoadingConversations(false);
+    }
+  };
+
+  const handleSaveConversation = async () => {
+    if (!saveTitle.trim() || messages.length === 0) return;
+
+    setIsSaving(true);
+    try {
+      const messagesToSave = messages
+        .filter((m) => !m.isError)
+        .map(({ role, content }) => ({ role, content }));
+
+      if (activeConversationId) {
+        // Update existing
+        await chatConversationsApi.update(activeConversationId, {
+          title: saveTitle.trim(),
+          messages: messagesToSave,
+        });
+      } else {
+        // Create new
+        const created = await chatConversationsApi.create({
+          transcription_id: transcriptionId,
+          title: saveTitle.trim(),
+          messages: messagesToSave,
+        });
+        setActiveConversationId(created.id);
+      }
+
+      setShowSaveDialog(false);
+      await loadSavedConversations();
+    } catch (err) {
+      console.error('Failed to save conversation:', err);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleLoadConversation = async (id: string) => {
+    try {
+      const convo = await chatConversationsApi.get(id);
+      const loaded: DisplayMessage[] = convo.messages.map((m) => ({
+        role: m.role as 'user' | 'assistant',
+        content: m.content,
+      }));
+      setMessages(loaded);
+      setActiveConversationId(convo.id);
+      setSaveTitle(convo.title);
+      setShowConversationList(false);
+    } catch (err) {
+      console.error('Failed to load conversation:', err);
+    }
+  };
+
+  const handleDeleteConversation = async (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!window.confirm('Delete this conversation?')) return;
+    try {
+      await chatConversationsApi.delete(id);
+      if (activeConversationId === id) {
+        setActiveConversationId(null);
+        setSaveTitle('');
+      }
+      await loadSavedConversations();
+    } catch (err) {
+      console.error('Failed to delete conversation:', err);
+    }
+  };
+
+  const handleNewConversation = () => {
+    setMessages([]);
+    setActiveConversationId(null);
+    setSaveTitle('');
+    setShowConversationList(false);
+  };
+
+  const openSaveDialog = () => {
+    if (!saveTitle) {
+      // Auto-generate a title from first user message
+      const firstUserMsg = messages.find((m) => m.role === 'user');
+      setSaveTitle(
+        firstUserMsg
+          ? firstUserMsg.content.slice(0, 60) + (firstUserMsg.content.length > 60 ? '...' : '')
+          : 'Chat conversation'
+      );
+    }
+    setShowSaveDialog(true);
+  };
 
   const handleSendMessage = async () => {
     if (!input.trim() || isStreaming) return;
@@ -191,8 +254,121 @@ export function ChatPanel({ transcriptionId }: ChatPanelProps) {
     }
   };
 
+  const hasMessages = messages.filter((m) => !m.isError).length > 0;
+
   return (
     <div className="flex flex-col h-full max-h-[600px] bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+      {/* Toolbar */}
+      <div className="flex items-center justify-between px-4 py-2 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-750 rounded-t-lg">
+        <div className="flex items-center gap-2 min-w-0">
+          {activeConversationId && (
+            <span className="text-xs text-gray-500 dark:text-gray-400 truncate max-w-[200px]" title={saveTitle}>
+              {saveTitle}
+            </span>
+          )}
+        </div>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={() => setShowConversationList(!showConversationList)}
+            className="p-1.5 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-600 rounded transition-colors"
+            title="Saved conversations"
+          >
+            <FolderOpen className="w-4 h-4" />
+          </button>
+          {hasMessages && (
+            <button
+              onClick={openSaveDialog}
+              disabled={isSaving}
+              className="p-1.5 text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-200 dark:hover:bg-gray-600 rounded transition-colors disabled:opacity-50"
+              title="Save conversation"
+            >
+              <Save className="w-4 h-4" />
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Save dialog */}
+      {showSaveDialog && (
+        <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-700 bg-blue-50 dark:bg-blue-900/20">
+          <div className="flex items-center gap-2">
+            <input
+              type="text"
+              value={saveTitle}
+              onChange={(e) => setSaveTitle(e.target.value)}
+              placeholder="Conversation title..."
+              className="flex-1 px-2 py-1 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white border border-gray-300 dark:border-gray-600 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleSaveConversation();
+                if (e.key === 'Escape') setShowSaveDialog(false);
+              }}
+              autoFocus
+            />
+            <button
+              onClick={handleSaveConversation}
+              disabled={isSaving || !saveTitle.trim()}
+              className="px-3 py-1 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded font-medium transition-colors disabled:opacity-50"
+            >
+              {isSaving ? 'Saving...' : activeConversationId ? 'Update' : 'Save'}
+            </button>
+            <button
+              onClick={() => setShowSaveDialog(false)}
+              className="p-1 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Conversation list dropdown */}
+      {showConversationList && (
+        <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-750 max-h-48 overflow-y-auto">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase">Saved Conversations</span>
+            <button
+              onClick={handleNewConversation}
+              className="text-xs text-blue-600 dark:text-blue-400 hover:underline"
+            >
+              New
+            </button>
+          </div>
+          {isLoadingConversations ? (
+            <p className="text-xs text-gray-500">Loading...</p>
+          ) : savedConversations.length === 0 ? (
+            <p className="text-xs text-gray-500 dark:text-gray-400">No saved conversations yet.</p>
+          ) : (
+            <div className="space-y-1">
+              {savedConversations.map((c) => (
+                <div
+                  key={c.id}
+                  onClick={() => handleLoadConversation(c.id)}
+                  className={`flex items-center justify-between p-2 rounded cursor-pointer transition-colors ${
+                    activeConversationId === c.id
+                      ? 'bg-blue-100 dark:bg-blue-900/40'
+                      : 'hover:bg-gray-200 dark:hover:bg-gray-600'
+                  }`}
+                >
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{c.title}</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                      {new Date(c.updated_at).toLocaleDateString()}
+                    </p>
+                  </div>
+                  <button
+                    onClick={(e) => handleDeleteConversation(c.id, e)}
+                    className="p-1 text-gray-400 hover:text-red-500 transition-colors flex-shrink-0"
+                    title="Delete"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       <div className="flex-1 overflow-y-auto min-h-0 p-4 space-y-4">
         {messages.length === 0 && !awaitingFirstChunk && (
           <div className="flex items-center justify-center h-full text-gray-500 dark:text-gray-400">

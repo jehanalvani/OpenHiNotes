@@ -62,8 +62,13 @@ export function Chat() {
                   }`}
                 >
                   <p className="font-medium text-gray-900 dark:text-white text-sm truncate">
-                    {t.original_filename}
+                    {t.title || t.original_filename}
                   </p>
+                  {t.title && (
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 truncate">
+                      {t.original_filename}
+                    </p>
+                  )}
                   <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">
                     Ready
                   </p>
