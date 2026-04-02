@@ -16,6 +16,7 @@ import {
   Inbox,
   Clock,
   Unplug,
+  ArrowUpDown,
 } from 'lucide-react';
 
 export function Transcriptions() {
@@ -25,6 +26,7 @@ export function Transcriptions() {
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [sortOrder, setSortOrder] = useState<'newest' | 'oldest'>('newest');
 
   // Set of filenames currently on the device — used to detect orphaned transcriptions
   const deviceFileNames = useMemo(
@@ -34,12 +36,12 @@ export function Transcriptions() {
 
   useEffect(() => {
     loadTranscriptions();
-  }, []);
+  }, [sortOrder]);
 
   const loadTranscriptions = async () => {
     setIsLoading(true);
     try {
-      const response = await transcriptionsApi.getTranscriptions(0, 100);
+      const response = await transcriptionsApi.getTranscriptions(0, 100, sortOrder);
       setTranscriptions(response.items);
     } catch (error) {
       console.error('Failed to load transcriptions:', error);
@@ -121,6 +123,15 @@ export function Transcriptions() {
             <option value="completed">Completed</option>
             <option value="failed">Failed</option>
           </select>
+
+          <button
+            onClick={() => setSortOrder(sortOrder === 'newest' ? 'oldest' : 'newest')}
+            className="inline-flex items-center gap-2 px-4 py-2.5 bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm text-gray-700 dark:text-gray-300 border border-gray-200/60 dark:border-gray-700/40 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-700 transition-all duration-200"
+            title={`Sort by date: ${sortOrder === 'newest' ? 'Newest first' : 'Oldest first'}`}
+          >
+            <ArrowUpDown className="w-4 h-4" />
+            <span className="text-sm">{sortOrder === 'newest' ? 'Newest' : 'Oldest'}</span>
+          </button>
 
           <button
             onClick={loadTranscriptions}

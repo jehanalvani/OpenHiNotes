@@ -105,12 +105,7 @@ export function ChatPanel({
     }
   }, [messages, awaitingFirstChunk]);
 
-  useEffect(() => {
-    if (!isStreaming) {
-      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-      userHasScrolledUp.current = false;
-    }
-  }, [isStreaming]);
+  // No forced scroll when streaming ends — respect the user's scroll position
 
   // Conversation persistence state
   const [conversations, setConversations] = useState<ChatConversationListItem[]>([]);

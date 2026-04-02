@@ -266,13 +266,15 @@ async def upload_transcription_stream(
 @router.get("", response_model=PaginatedTranscriptionResponse)
 async def list_transcriptions(
     skip: int = Query(0, ge=0),
-    limit: int = Query(50, ge=1, le=100),
+    limit: int = Query(50, ge=1, le=200),
+    sort: str = Query("newest", regex="^(newest|oldest)$"),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """List transcriptions."""
     # Base queries
-    query = select(Transcription).offset(skip).limit(limit)
+    order = Transcription.created_at.desc() if sort == "newest" else Transcription.created_at.asc()
+    query = select(Transcription).order_by(order).offset(skip).limit(limit)
     count_query = select(func.count()).select_from(Transcription)
 
     if current_user.role != UserRole.admin:

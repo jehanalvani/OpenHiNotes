@@ -249,8 +249,8 @@ export function CollectionDetail() {
                       className="flex items-center gap-3 px-4 py-3 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-blue-300 dark:hover:border-blue-600 cursor-pointer transition-colors"
                       onClick={async () => {
                         await handleAssign(t.id);
-                        // Refresh the available list
-                        setAllTranscriptions((prev) => prev);
+                        // Remove the assigned item from available list
+                        setAllTranscriptions((prev) => prev.filter((at) => at.id !== t.id));
                       }}
                     >
                       <FileText className="w-4 h-4 text-gray-400 flex-shrink-0" />
