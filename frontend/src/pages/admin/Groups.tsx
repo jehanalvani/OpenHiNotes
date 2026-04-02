@@ -184,7 +184,7 @@ export function Groups() {
               >
                 {/* Group header */}
                 <div
-                  className="flex items-center justify-between p-4 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-750 transition-colors"
+                  className="flex items-center justify-between p-4 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
                   onClick={() => toggleGroup(group.id)}
                 >
                   <div className="flex items-center gap-3">
@@ -297,7 +297,7 @@ export function Groups() {
                         {expandedGroup.members.map((member) => (
                           <div
                             key={member.id}
-                            className="flex items-center justify-between px-3 py-2 bg-gray-50 dark:bg-gray-750 rounded-lg"
+                            className="flex items-center justify-between px-3 py-2 bg-gray-50 dark:bg-gray-700/50 rounded-lg"
                           >
                             <div className="flex items-center gap-2">
                               <div className="w-7 h-7 rounded-full bg-primary-100 dark:bg-primary-900/30 flex items-center justify-center">

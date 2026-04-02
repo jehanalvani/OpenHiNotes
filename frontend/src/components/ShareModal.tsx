@@ -309,7 +309,7 @@ export function ShareModal({
                         key={group.id}
                         onClick={() => handleShare('group', group.id)}
                         disabled={loading}
-                        className="w-full flex items-center gap-3 px-3 py-2.5 bg-gray-50 dark:bg-gray-750 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors text-left"
+                        className="w-full flex items-center gap-3 px-3 py-2.5 bg-gray-50 dark:bg-gray-700/50 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors text-left"
                       >
                         <div className="w-9 h-9 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center flex-shrink-0">
                           <Users className="w-4 h-4 text-blue-600 dark:text-blue-400" />
@@ -349,7 +349,7 @@ export function ShareModal({
                 {shares.map((share) => (
                   <div
                     key={share.id}
-                    className="flex items-center justify-between px-3 py-2 bg-gray-50 dark:bg-gray-750 rounded-lg"
+                    className="flex items-center justify-between px-3 py-2 bg-gray-50 dark:bg-gray-700/50 rounded-lg"
                   >
                     <div className="flex items-center gap-3 min-w-0">
                       <div
