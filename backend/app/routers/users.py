@@ -1,6 +1,6 @@
-from fastapi import APIRouter, HTTPException, status, Depends
+from fastapi import APIRouter, HTTPException, status, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, or_
 from app.database import get_db
 from app.schemas.user import UserResponse, UserUpdate
 from app.models.user import User, UserRole
@@ -21,6 +21,28 @@ async def list_users(
     result = await db.execute(select(User).offset(skip).limit(limit))
     users = result.scalars().all()
     return users
+
+
+@router.get("/search", response_model=list[UserResponse])
+async def search_users(
+    q: str = Query("", min_length=0, max_length=100),
+    limit: int = Query(10, ge=1, le=50),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Search users by email or display name. Available to all authenticated users (for sharing)."""
+    query = select(User).where(User.is_active == True).limit(limit)  # noqa: E712
+    if q:
+        query = query.where(
+            or_(
+                User.email.ilike(f"%{q}%"),
+                User.display_name.ilike(f"%{q}%"),
+            )
+        )
+    # Exclude the current user from results
+    query = query.where(User.id != current_user.id)
+    result = await db.execute(query)
+    return result.scalars().all()
 
 
 @router.get("/{user_id}", response_model=UserResponse)
