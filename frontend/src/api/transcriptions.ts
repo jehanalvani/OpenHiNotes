@@ -181,6 +181,30 @@ export const transcriptionsApi = {
     });
   },
 
+  async updateSegmentText(
+    id: string,
+    segmentIndex: number,
+    text: string,
+  ): Promise<Transcription> {
+    return apiClient.patch<Transcription>(`/transcriptions/${id}/segments/update-text`, {
+      segment_index: segmentIndex,
+      text,
+    });
+  },
+
+  async findAndReplace(
+    id: string,
+    find: string,
+    replace: string,
+    caseSensitive: boolean = false,
+  ): Promise<Transcription> {
+    return apiClient.patch<Transcription>(`/transcriptions/${id}/find-replace`, {
+      find,
+      replace,
+      case_sensitive: caseSensitive,
+    });
+  },
+
   async deleteTranscription(id: string): Promise<void> {
     return apiClient.delete<void>(`/transcriptions/${id}`);
   },

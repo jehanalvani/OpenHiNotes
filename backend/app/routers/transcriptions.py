@@ -1,5 +1,6 @@
 import asyncio
 import json
+import re
 import uuid
 
 from fastapi import (
@@ -23,6 +24,8 @@ from app.schemas.transcription import (
     NotesUpdate,
     TitleUpdate,
     SegmentSpeakerReassign,
+    SegmentTextUpdate,
+    TranscriptFindReplace,
 )
 from app.models.user import User, UserRole
 from app.models.transcription import Transcription
@@ -550,6 +553,119 @@ async def reassign_segment_speaker(
             segments[idx] = {**segments[idx], "speaker": reassign.new_speaker}
 
     transcription.segments = segments
+    await db.commit()
+    await db.refresh(transcription)
+    return transcription
+
+
+@router.patch("/{transcription_id}/segments/update-text", response_model=TranscriptionResponse)
+async def update_segment_text(
+    transcription_id: uuid.UUID,
+    update: SegmentTextUpdate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Update the text of a specific segment (e.g. to fix a mis-transcribed word)."""
+    transcription = await TranscriptionService.get_transcription(db, transcription_id)
+
+    if not transcription:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Transcription not found",
+        )
+
+    has_access = await PermissionService.check_access(
+        db, current_user, ResourceType.transcription, transcription_id, "write"
+    )
+    if not has_access:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to update this transcription",
+        )
+
+    segments = list(transcription.segments or [])
+    if update.segment_index < 0 or update.segment_index >= len(segments):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Segment index {update.segment_index} out of range (0-{len(segments) - 1})",
+        )
+
+    segments[update.segment_index] = {**segments[update.segment_index], "text": update.text}
+    transcription.segments = segments
+
+    # Rebuild the full text from all segments
+    transcription.text = " ".join(
+        seg.get("text", "").strip() for seg in segments if seg.get("text", "").strip()
+    )
+
+    await db.commit()
+    await db.refresh(transcription)
+    return transcription
+
+
+@router.patch("/{transcription_id}/find-replace", response_model=TranscriptionResponse)
+async def find_and_replace(
+    transcription_id: uuid.UUID,
+    payload: TranscriptFindReplace,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Find and replace a word or pattern across all segments of a transcription."""
+    transcription = await TranscriptionService.get_transcription(db, transcription_id)
+
+    if not transcription:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Transcription not found",
+        )
+
+    has_access = await PermissionService.check_access(
+        db, current_user, ResourceType.transcription, transcription_id, "write"
+    )
+    if not has_access:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to update this transcription",
+        )
+
+    if not payload.find:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Search term cannot be empty",
+        )
+
+    segments = list(transcription.segments or [])
+    total_replacements = 0
+
+    for i, seg in enumerate(segments):
+        text = seg.get("text", "")
+        if payload.case_sensitive:
+            count = text.count(payload.find)
+            new_text = text.replace(payload.find, payload.replace)
+        else:
+            # Case-insensitive replace
+            pattern = re.compile(re.escape(payload.find), re.IGNORECASE)
+            matches = pattern.findall(text)
+            count = len(matches)
+            new_text = pattern.sub(payload.replace, text)
+
+        if count > 0:
+            segments[i] = {**seg, "text": new_text}
+            total_replacements += count
+
+    if total_replacements == 0:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"No occurrences of '{payload.find}' found in the transcript",
+        )
+
+    transcription.segments = segments
+
+    # Rebuild the full text from all segments
+    transcription.text = " ".join(
+        seg.get("text", "").strip() for seg in segments if seg.get("text", "").strip()
+    )
+
     await db.commit()
     await db.refresh(transcription)
     return transcription

@@ -72,7 +72,28 @@ async def list_conversations(
     query = query.order_by(ChatConversation.updated_at.desc())
 
     result = await db.execute(query)
-    return result.scalars().all()
+    conversations = result.scalars().all()
+
+    # Resolve transcription names for conversations linked to transcriptions
+    transcription_ids = {c.transcription_id for c in conversations if c.transcription_id}
+    name_map: dict[uuid.UUID, str] = {}
+    if transcription_ids:
+        t_result = await db.execute(
+            select(Transcription.id, Transcription.title, Transcription.original_filename)
+            .where(Transcription.id.in_(transcription_ids))
+        )
+        for tid, title, original_filename in t_result.all():
+            name_map[tid] = title or original_filename or str(tid)
+
+    # Build response with transcription_name populated
+    items = []
+    for c in conversations:
+        item = ChatConversationListItem.model_validate(c)
+        if c.transcription_id and c.transcription_id in name_map:
+            item.transcription_name = name_map[c.transcription_id]
+        items.append(item)
+
+    return items
 
 
 @router.get("/{conversation_id}", response_model=ChatConversationResponse)

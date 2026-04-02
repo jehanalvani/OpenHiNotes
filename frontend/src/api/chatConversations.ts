@@ -20,6 +20,7 @@ export interface ChatConversationListItem {
   transcription_id: string | null;
   user_id: string;
   title: string;
+  transcription_name: string | null;
   created_at: string;
   updated_at: string;
 }

@@ -621,7 +621,7 @@ export function TranscriptionDetail() {
           transcription={transcription}
           currentTime={audioBlob ? playbackTime : undefined}
           onSeek={audioBlob ? handleSeekAudio : undefined}
-          onSpeakerUpdate={async (speakerId, newName) => {
+          onSpeakerUpdate={canEdit ? async (speakerId, newName) => {
             if (!transcription) return;
             const updatedSpeakers = { ...transcription.speakers, [speakerId]: newName };
             try {
@@ -630,8 +630,8 @@ export function TranscriptionDetail() {
             } catch (error) {
               console.error('Failed to update speaker:', error);
             }
-          }}
-          onSegmentReassign={async (segmentIndex, newSpeaker) => {
+          } : undefined}
+          onSegmentReassign={canEdit ? async (segmentIndex, newSpeaker) => {
             if (!transcription) return;
             try {
               const updated = await transcriptionsApi.reassignSegmentSpeaker(
@@ -643,7 +643,30 @@ export function TranscriptionDetail() {
             } catch (error) {
               console.error('Failed to reassign segment speaker:', error);
             }
-          }}
+          } : undefined}
+          onSegmentTextUpdate={canEdit ? async (segmentIndex, newText) => {
+            if (!transcription) return;
+            try {
+              const updated = await transcriptionsApi.updateSegmentText(
+                transcription.id,
+                segmentIndex,
+                newText,
+              );
+              setTranscription(updated);
+            } catch (error) {
+              console.error('Failed to update segment text:', error);
+            }
+          } : undefined}
+          onFindReplace={canEdit ? async (find, replace, caseSensitive) => {
+            if (!transcription) return;
+            const updated = await transcriptionsApi.findAndReplace(
+              transcription.id,
+              find,
+              replace,
+              caseSensitive,
+            );
+            setTranscription(updated);
+          } : undefined}
         />
 
         {transcription.status === 'completed' && (

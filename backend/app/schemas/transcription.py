@@ -32,6 +32,19 @@ class SegmentSpeakerReassign(BaseModel):
     new_speaker: str
 
 
+class SegmentTextUpdate(BaseModel):
+    """Schema for updating the text of a specific segment."""
+    segment_index: int
+    text: str
+
+
+class TranscriptFindReplace(BaseModel):
+    """Schema for finding and replacing text across all segments."""
+    find: str
+    replace: str
+    case_sensitive: bool = False
+
+
 class SegmentResponse(BaseModel):
     """Schema for a transcription segment."""
     start: float
