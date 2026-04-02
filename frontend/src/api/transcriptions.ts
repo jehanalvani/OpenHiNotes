@@ -138,10 +138,11 @@ export const transcriptionsApi = {
 
   async getTranscriptions(
     skip: number = 0,
-    limit: number = 20
+    limit: number = 20,
+    sort: 'newest' | 'oldest' = 'newest',
   ): Promise<PaginatedResponse<Transcription>> {
     return apiClient.get<PaginatedResponse<Transcription>>(
-      `/transcriptions?skip=${skip}&limit=${limit}`
+      `/transcriptions?skip=${skip}&limit=${limit}&sort=${sort}`
     );
   },
 
@@ -166,6 +167,17 @@ export const transcriptionsApi = {
 
   async updateTitle(id: string, title: string | null): Promise<Transcription> {
     return apiClient.patch<Transcription>(`/transcriptions/${id}/title`, { title });
+  },
+
+  async reassignSegmentSpeaker(
+    id: string,
+    segmentIndices: number[],
+    newSpeaker: string,
+  ): Promise<Transcription> {
+    return apiClient.patch<Transcription>(`/transcriptions/${id}/segments/reassign-speaker`, {
+      segment_indices: segmentIndices,
+      new_speaker: newSpeaker,
+    });
   },
 
   async deleteTranscription(id: string): Promise<void> {

@@ -23,12 +23,24 @@ export interface TranscriptionSegment {
   speaker?: string;
 }
 
+export interface Collection {
+  id: string;
+  user_id: string;
+  name: string;
+  color: string | null;
+  description: string | null;
+  created_at: string;
+  updated_at: string;
+  transcription_count: number;
+}
+
 export interface Transcription {
   id: string;
   user_id: string;
   filename: string;
   original_filename: string;
   title: string | null;
+  collection_id: string | null;
   audio_duration: number | null;
   language: string;
   text: string;

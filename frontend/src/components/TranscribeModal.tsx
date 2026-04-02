@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react';
-import { X, Loader } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { X, Loader, CheckCircle, ExternalLink } from 'lucide-react';
 import { Transcription, SummaryTemplate } from '@/types';
 import { transcriptionsApi } from '@/api/transcriptions';
+import { collectionsApi } from '@/api/collections';
 import { templatesApi } from '@/api/templates';
 
 interface TranscribeModalProps {
@@ -9,6 +11,10 @@ interface TranscribeModalProps {
   onClose: () => void;
   audioFile: Blob | null;
   fileName: string;
+  /** If set, automatically applied as the transcription title after successful transcribe */
+  initialTitle?: string;
+  /** If set, automatically assigns the transcription to this collection after transcribe */
+  initialCollectionId?: string;
   onComplete: (transcription: Transcription) => void;
 }
 
@@ -30,8 +36,11 @@ export function TranscribeModal({
   onClose,
   audioFile,
   fileName,
+  initialTitle,
+  initialCollectionId,
   onComplete,
 }: TranscribeModalProps) {
+  const navigate = useNavigate();
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [progress, setProgress] = useState(0);
   const [progressStatus, setProgressStatus] = useState('');
@@ -40,6 +49,7 @@ export function TranscribeModal({
   const [selectedTemplate, setSelectedTemplate] = useState<string>('');
   const [templates, setTemplates] = useState<SummaryTemplate[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [completedTranscription, setCompletedTranscription] = useState<Transcription | null>(null);
 
   useEffect(() => {
     if (autoSummarize) {
@@ -88,13 +98,30 @@ export function TranscribeModal({
         return;
       }
 
+      // If an alias / initial title was provided, set it as the transcription title
+      if (initialTitle && transcription.id) {
+        try {
+          await transcriptionsApi.updateTitle(transcription.id, initialTitle);
+          transcription.title = initialTitle;
+        } catch {
+          console.warn('Could not set initial title from alias');
+        }
+      }
+
+      // If a collection was pre-assigned, assign the transcription to it
+      if (initialCollectionId && transcription.id) {
+        try {
+          await collectionsApi.assignTranscription(initialCollectionId, transcription.id);
+          transcription.collection_id = initialCollectionId;
+        } catch {
+          console.warn('Could not assign to collection');
+        }
+      }
+
       setProgress(100);
-      setTimeout(() => {
-        onComplete(transcription);
-        onClose();
-        setIsTranscribing(false);
-        setProgress(0);
-      }, 500);
+      setIsTranscribing(false);
+      setCompletedTranscription(transcription);
+      onComplete(transcription);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Transcription failed';
       setError(message);
@@ -130,8 +157,11 @@ export function TranscribeModal({
             <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">File</p>
             <div className="p-3 bg-gray-100 dark:bg-gray-700 rounded-lg">
               <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
-                {fileName}
+                {initialTitle || fileName}
               </p>
+              {initialTitle && (
+                <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{fileName}</p>
+              )}
               <p className="text-xs text-gray-500 dark:text-gray-400">{fileSize} MB</p>
             </div>
           </div>
@@ -214,23 +244,64 @@ export function TranscribeModal({
           )}
         </div>
 
-        <div className="flex gap-3 mt-6">
-          <button
-            onClick={onClose}
-            disabled={isTranscribing}
-            className="flex-1 px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors disabled:opacity-50 font-medium"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handleTranscribe}
-            disabled={isTranscribing || !audioFile}
-            className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors disabled:opacity-50 font-medium flex items-center justify-center gap-2"
-          >
-            {isTranscribing && <Loader className="w-4 h-4 animate-spin" />}
-            {autoSummarize ? 'Transcribe & Summarize' : 'Transcribe'}
-          </button>
-        </div>
+        {completedTranscription ? (
+          <div className="mt-6 space-y-4">
+            <div className="flex items-center gap-3 p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
+              <CheckCircle className="w-5 h-5 text-green-600 dark:text-green-400 flex-shrink-0" />
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-medium text-green-800 dark:text-green-300">
+                  Transcription complete!
+                </p>
+                <p className="text-xs text-green-600 dark:text-green-400 mt-0.5 truncate">
+                  {completedTranscription.title || completedTranscription.original_filename}
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={() => {
+                  setCompletedTranscription(null);
+                  setProgress(0);
+                  onClose();
+                }}
+                className="flex-1 px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors font-medium"
+              >
+                Close
+              </button>
+              <button
+                onClick={() => {
+                  const id = completedTranscription.id;
+                  setCompletedTranscription(null);
+                  setProgress(0);
+                  onClose();
+                  navigate(`/transcriptions/${id}`);
+                }}
+                className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors font-medium flex items-center justify-center gap-2"
+              >
+                <ExternalLink className="w-4 h-4" />
+                View Transcript
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="flex gap-3 mt-6">
+            <button
+              onClick={onClose}
+              disabled={isTranscribing}
+              className="flex-1 px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors disabled:opacity-50 font-medium"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleTranscribe}
+              disabled={isTranscribing || !audioFile}
+              className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors disabled:opacity-50 font-medium flex items-center justify-center gap-2"
+            >
+              {isTranscribing && <Loader className="w-4 h-4 animate-spin" />}
+              {autoSummarize ? 'Transcribe & Summarize' : 'Transcribe'}
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

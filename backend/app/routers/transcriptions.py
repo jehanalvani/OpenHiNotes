@@ -22,6 +22,7 @@ from app.schemas.transcription import (
     SpeakersUpdate,
     NotesUpdate,
     TitleUpdate,
+    SegmentSpeakerReassign,
 )
 from app.models.user import User, UserRole
 from app.models.transcription import Transcription
@@ -265,13 +266,15 @@ async def upload_transcription_stream(
 @router.get("", response_model=PaginatedTranscriptionResponse)
 async def list_transcriptions(
     skip: int = Query(0, ge=0),
-    limit: int = Query(50, ge=1, le=100),
+    limit: int = Query(50, ge=1, le=200),
+    sort: str = Query("newest", regex="^(newest|oldest)$"),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """List transcriptions."""
     # Base queries
-    query = select(Transcription).offset(skip).limit(limit)
+    order = Transcription.created_at.desc() if sort == "newest" else Transcription.created_at.asc()
+    query = select(Transcription).order_by(order).offset(skip).limit(limit)
     count_query = select(func.count()).select_from(Transcription)
 
     if current_user.role != UserRole.admin:
@@ -435,6 +438,39 @@ async def update_title(
 
     updated = await TranscriptionService.update_title(db, transcription_id, title_update.title)
     return updated
+
+
+@router.patch("/{transcription_id}/segments/reassign-speaker", response_model=TranscriptionResponse)
+async def reassign_segment_speaker(
+    transcription_id: uuid.UUID,
+    reassign: SegmentSpeakerReassign,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Reassign the speaker of specific segments to a different speaker."""
+    transcription = await TranscriptionService.get_transcription(db, transcription_id)
+
+    if not transcription:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Transcription not found",
+        )
+
+    if current_user.role != UserRole.admin and transcription.user_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to update this transcription",
+        )
+
+    segments = list(transcription.segments or [])
+    for idx in reassign.segment_indices:
+        if 0 <= idx < len(segments):
+            segments[idx] = {**segments[idx], "speaker": reassign.new_speaker}
+
+    transcription.segments = segments
+    await db.commit()
+    await db.refresh(transcription)
+    return transcription
 
 
 @router.delete("/{transcription_id}", status_code=status.HTTP_204_NO_CONTENT)

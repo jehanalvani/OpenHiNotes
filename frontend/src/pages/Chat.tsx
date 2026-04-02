@@ -1,20 +1,30 @@
-import { useState, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { Layout } from '@/components/Layout';
 import { ChatPanel } from '@/components/ChatPanel';
 import { transcriptionsApi } from '@/api/transcriptions';
-import { Transcription } from '@/types';
+import { collectionsApi } from '@/api/collections';
+import { Transcription, Collection } from '@/types';
+import { FolderOpen } from 'lucide-react';
 
 export function Chat() {
   const [transcriptions, setTranscriptions] = useState<Transcription[]>([]);
+  const [collections, setCollections] = useState<Collection[]>([]);
   const [selectedTranscriptionId, setSelectedTranscriptionId] = useState<string | undefined>();
   const [isLoadingTranscriptions, setIsLoadingTranscriptions] = useState(false);
   const [hasLoadedTranscriptions, setHasLoadedTranscriptions] = useState(false);
 
+  // Build a map of collection_id → collection for badge display
+  const collectionMap = new Map(collections.map((c) => [c.id, c]));
+
   const handleLoadTranscriptions = async () => {
     setIsLoadingTranscriptions(true);
     try {
-      const response = await transcriptionsApi.getTranscriptions(0, 50);
+      const [response, colls] = await Promise.all([
+        transcriptionsApi.getTranscriptions(0, 100),
+        collectionsApi.list(),
+      ]);
       setTranscriptions(response.items.filter(t => t.status === 'completed'));
+      setCollections(colls);
       setHasLoadedTranscriptions(true);
     } catch (error) {
       console.error('Failed to load transcriptions:', error);
@@ -69,9 +79,27 @@ export function Chat() {
                       {t.original_filename}
                     </p>
                   )}
-                  <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">
-                    Ready
-                  </p>
+                  <div className="flex items-center gap-2 mt-1">
+                    {t.collection_id && collectionMap.has(t.collection_id) && (
+                      <span
+                        className="inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-600 text-gray-600 dark:text-gray-300"
+                      >
+                        {collectionMap.get(t.collection_id)!.color && (
+                          <span
+                            className="w-2 h-2 rounded-full flex-shrink-0"
+                            style={{ backgroundColor: collectionMap.get(t.collection_id)!.color! }}
+                          />
+                        )}
+                        {!collectionMap.get(t.collection_id)!.color && (
+                          <FolderOpen className="w-2.5 h-2.5 flex-shrink-0" />
+                        )}
+                        {collectionMap.get(t.collection_id)!.name}
+                      </span>
+                    )}
+                    <span className="text-xs text-gray-600 dark:text-gray-400">
+                      Ready
+                    </span>
+                  </div>
                 </button>
               ))}
             </div>

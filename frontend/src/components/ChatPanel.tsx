@@ -10,6 +10,8 @@ import { formatMarkdown } from '@/utils/formatMarkdown';
 
 interface ChatPanelProps {
   transcriptionId?: string;
+  /** When set, the chat uses the full collection as context (multi-transcript) */
+  collectionId?: string;
   /**
    * When true (default when transcriptionId is set), the conversation list
    * only shows chats linked to the current transcriptionId — no folder
@@ -72,6 +74,7 @@ function groupByTranscription(
 
 export function ChatPanel({
   transcriptionId,
+  collectionId,
   scopeToTranscription,
   transcriptionNames = {},
 }: ChatPanelProps) {
@@ -102,12 +105,7 @@ export function ChatPanel({
     }
   }, [messages, awaitingFirstChunk]);
 
-  useEffect(() => {
-    if (!isStreaming) {
-      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-      userHasScrolledUp.current = false;
-    }
-  }, [isStreaming]);
+  // No forced scroll when streaming ends — respect the user's scroll position
 
   // Conversation persistence state
   const [conversations, setConversations] = useState<ChatConversationListItem[]>([]);
@@ -163,6 +161,8 @@ export function ChatPanel({
 
       setShowSaveDialog(false);
       await loadSavedConversations();
+      // Auto-open conversation panel so the user sees the saved item
+      setShowConversationPanel(true);
     } catch (err) {
       console.error('Failed to save conversation:', err);
     } finally {
@@ -245,7 +245,7 @@ export function ChatPanel({
       const messagesToSend: ChatMessage[] = [...messages.filter(m => !m.isError), userMessage].map(
         ({ role, content }) => ({ role, content }),
       );
-      const stream = await chatApi.sendChatMessage(messagesToSend, transcriptionId);
+      const stream = await chatApi.sendChatMessage(messagesToSend, transcriptionId, { collectionId });
 
       let assistantMessage = '';
       let receivedContent = false;
@@ -551,7 +551,7 @@ export function ChatPanel({
         {messages.length === 0 && !awaitingFirstChunk && (
           <div className="flex items-center justify-center h-full text-gray-500 dark:text-gray-400">
             <p className="text-center">
-              Start a conversation about {transcriptionId ? 'the transcript' : 'anything'}
+              Start a conversation about {collectionId ? 'this collection' : transcriptionId ? 'the transcript' : 'anything'}
             </p>
           </div>
         )}

@@ -26,6 +26,12 @@ class TitleUpdate(BaseModel):
     title: Optional[str] = None
 
 
+class SegmentSpeakerReassign(BaseModel):
+    """Schema for reassigning a speaker on specific segments."""
+    segment_indices: List[int]
+    new_speaker: str
+
+
 class SegmentResponse(BaseModel):
     """Schema for a transcription segment."""
     start: float
@@ -41,6 +47,7 @@ class TranscriptionResponse(BaseModel):
     filename: str
     original_filename: str
     title: Optional[str] = None
+    collection_id: Optional[uuid.UUID] = None
     audio_duration: Optional[float] = None
     language: Optional[str] = None
     text: Optional[str] = None
