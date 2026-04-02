@@ -254,6 +254,9 @@ export function CollectionDetail() {
             <ChatPanel
               collectionId={id}
               scopeToTranscription={false}
+              transcriptionNames={Object.fromEntries(
+                transcriptions.map((t) => [t.id, t.title || t.original_filename])
+              )}
             />
           </div>
         )}
