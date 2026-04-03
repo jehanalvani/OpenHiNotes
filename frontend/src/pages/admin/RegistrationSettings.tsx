@@ -145,7 +145,9 @@ export function RegistrationSettingsPage() {
         </div>
 
         {/* Approval Required Toggle */}
-        <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-5">
+        <div className={`bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-5 transition-opacity ${
+          !settings.registration_enabled ? 'opacity-50 pointer-events-none' : ''
+        }`}>
           <div className="flex items-start justify-between">
             <div className="flex items-start gap-3">
               <div className="w-10 h-10 rounded-lg bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center flex-shrink-0">
@@ -159,9 +161,15 @@ export function RegistrationSettingsPage() {
                   New registrations are placed in a "Pending" state and require explicit admin
                   approval before the user can log in.
                 </p>
+                {!settings.registration_enabled && (
+                  <p className="text-xs text-amber-500 dark:text-amber-400 mt-1 italic">
+                    Enable public registration to configure this setting.
+                  </p>
+                )}
               </div>
             </div>
             <button
+              disabled={!settings.registration_enabled}
               onClick={() =>
                 setSettings({ ...settings, approval_required: !settings.approval_required })
               }
@@ -181,7 +189,9 @@ export function RegistrationSettingsPage() {
         </div>
 
         {/* Domain Whitelist */}
-        <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-5">
+        <div className={`bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-5 transition-opacity ${
+          !settings.registration_enabled ? 'opacity-50 pointer-events-none' : ''
+        }`}>
           <div className="flex items-start gap-3 mb-4">
             <div className="w-10 h-10 rounded-lg bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center flex-shrink-0">
               <Mail className="w-5 h-5 text-blue-600 dark:text-blue-400" />
@@ -193,6 +203,11 @@ export function RegistrationSettingsPage() {
               <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 leading-relaxed">
                 Restrict registration to specific email domains. Leave empty to allow all domains.
               </p>
+              {!settings.registration_enabled && (
+                <p className="text-xs text-amber-500 dark:text-amber-400 mt-1 italic">
+                  Enable public registration to configure this setting.
+                </p>
+              )}
             </div>
           </div>
 
@@ -206,12 +221,13 @@ export function RegistrationSettingsPage() {
                 onChange={(e) => setNewDomain(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddDomain())}
                 placeholder="company.com"
-                className="w-full pl-7 pr-3 py-2 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500/50"
+                disabled={!settings.registration_enabled}
+                className="w-full pl-7 pr-3 py-2 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500/50 disabled:opacity-40"
               />
             </div>
             <button
               onClick={handleAddDomain}
-              disabled={!newDomain.trim()}
+              disabled={!newDomain.trim() || !settings.registration_enabled}
               className="px-3 py-2 bg-blue-500 hover:bg-blue-600 disabled:opacity-40 text-white rounded-lg transition-colors"
             >
               <Plus className="w-4 h-4" />
@@ -233,7 +249,8 @@ export function RegistrationSettingsPage() {
                   @{domain}
                   <button
                     onClick={() => handleRemoveDomain(domain)}
-                    className="hover:text-red-500 transition-colors"
+                    disabled={!settings.registration_enabled}
+                    className="hover:text-red-500 transition-colors disabled:opacity-40"
                   >
                     <X className="w-3 h-3" />
                   </button>

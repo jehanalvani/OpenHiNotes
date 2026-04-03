@@ -59,7 +59,10 @@ function groupByTranscription(
   const result: { label: string; transcriptionId: string | null; items: ChatConversationListItem[] }[] = [];
 
   for (const [tid, items] of groups) {
-    const label = tid ? (nameMap[tid] || 'Unknown transcript') : 'General';
+    // Use transcription_name from the first item (populated by the backend),
+    // fall back to the external nameMap, then to 'Unknown transcript'
+    const firstItemName = items[0]?.transcription_name;
+    const label = tid ? (firstItemName || nameMap[tid] || 'Unknown transcript') : 'General';
     result.push({ label, transcriptionId: tid, items });
   }
 

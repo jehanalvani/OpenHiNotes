@@ -1,11 +1,15 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
-import { Copy, Check, Pencil, ArrowRightLeft, X } from 'lucide-react';
+import { Copy, Check, Pencil, ArrowRightLeft, X, Search, Replace } from 'lucide-react';
 import { Transcription } from '@/types';
 
 interface TranscriptionViewerProps {
   transcription: Transcription;
   onSpeakerUpdate?: (speakerId: string, newName: string) => void;
   onSegmentReassign?: (segmentIndex: number, newSpeaker: string) => void;
+  /** Called when user edits a segment's text to fix a mis-transcription */
+  onSegmentTextUpdate?: (segmentIndex: number, newText: string) => void;
+  /** Called when user performs find-and-replace across all segments */
+  onFindReplace?: (find: string, replace: string, caseSensitive: boolean) => void;
   /** Current audio playback time in seconds — used for highlight sync */
   currentTime?: number;
   /** Called when user clicks a segment timestamp to seek */
@@ -49,17 +53,27 @@ function getSpeakerColorByIndex(index: number) {
   return SPEAKER_PALETTE[index % SPEAKER_PALETTE.length];
 }
 
-export function TranscriptionViewer({ transcription, onSpeakerUpdate, onSegmentReassign, currentTime, onSeek }: TranscriptionViewerProps) {
+export function TranscriptionViewer({ transcription, onSpeakerUpdate, onSegmentReassign, onSegmentTextUpdate, onFindReplace, currentTime, onSeek }: TranscriptionViewerProps) {
   const [copied, setCopied] = useState(false);
   const [editingSpeaker, setEditingSpeaker] = useState<string | null>(null);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [editValue, setEditValue] = useState('');
   const editInputRef = useRef<HTMLInputElement>(null);
   const [reassigningIndex, setReassigningIndex] = useState<number | null>(null);
+  const [editingTextIndex, setEditingTextIndex] = useState<number | null>(null);
+  const [editTextValue, setEditTextValue] = useState('');
+  const editTextRef = useRef<HTMLTextAreaElement>(null);
   const activeSegmentRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const userScrolledRef = useRef(false);
   const lastActiveIndexRef = useRef<number>(-1);
+
+  // Find & Replace state
+  const [showFindReplace, setShowFindReplace] = useState(false);
+  const [findText, setFindText] = useState('');
+  const [replaceText, setReplaceText] = useState('');
+  const [caseSensitive, setCaseSensitive] = useState(false);
+  const [findReplaceStatus, setFindReplaceStatus] = useState<string | null>(null);
 
   // Build a deterministic sorted speaker list → index map
   const speakerIndexMap = useMemo(() => {
@@ -122,6 +136,16 @@ export function TranscriptionViewer({ transcription, onSpeakerUpdate, onSegmentR
     }
   }, [editingIndex]);
 
+  // Auto-focus and auto-resize the text editing textarea
+  useEffect(() => {
+    if (editingTextIndex !== null && editTextRef.current) {
+      editTextRef.current.focus({ preventScroll: true });
+      editTextRef.current.select();
+      editTextRef.current.style.height = 'auto';
+      editTextRef.current.style.height = editTextRef.current.scrollHeight + 'px';
+    }
+  }, [editingTextIndex]);
+
   const copyToClipboard = () => {
     navigator.clipboard.writeText(transcription.text);
     setCopied(true);
@@ -150,7 +174,7 @@ export function TranscriptionViewer({ transcription, onSpeakerUpdate, onSegmentR
     return document.documentElement.classList.contains('dark');
   };
 
-  // --- Inline editing handlers ---
+  // --- Inline speaker editing handlers ---
   const startEditing = (speakerId: string, segmentIndex: number) => {
     if (!onSpeakerUpdate) return;
     setEditingSpeaker(speakerId);
@@ -183,27 +207,170 @@ export function TranscriptionViewer({ transcription, onSpeakerUpdate, onSegmentR
     }
   };
 
+  // --- Inline segment text editing handlers ---
+  const startTextEditing = (segmentIndex: number) => {
+    if (!onSegmentTextUpdate) return;
+    setEditingTextIndex(segmentIndex);
+    setEditTextValue(transcription.segments[segmentIndex].text);
+  };
+
+  const saveTextEdit = () => {
+    if (editingTextIndex !== null && onSegmentTextUpdate && editTextValue.trim()) {
+      const originalText = transcription.segments[editingTextIndex].text;
+      if (editTextValue.trim() !== originalText.trim()) {
+        onSegmentTextUpdate(editingTextIndex, editTextValue.trim());
+      }
+    }
+    setEditingTextIndex(null);
+    setEditTextValue('');
+  };
+
+  const cancelTextEdit = () => {
+    setEditingTextIndex(null);
+    setEditTextValue('');
+  };
+
+  const handleTextKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      saveTextEdit();
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      cancelTextEdit();
+    }
+  };
+
+  // --- Find & Replace handlers ---
+  const handleFindReplace = async () => {
+    if (!onFindReplace || !findText.trim()) return;
+    setFindReplaceStatus(null);
+    try {
+      await onFindReplace(findText, replaceText, caseSensitive);
+      setFindReplaceStatus('Replacements applied successfully');
+      setTimeout(() => setFindReplaceStatus(null), 3000);
+    } catch (err: any) {
+      setFindReplaceStatus(err?.message || 'No matches found');
+      setTimeout(() => setFindReplaceStatus(null), 3000);
+    }
+  };
+
+  // Count occurrences for preview
+  const matchCount = useMemo(() => {
+    if (!findText.trim()) return 0;
+    let count = 0;
+    for (const seg of transcription.segments) {
+      if (caseSensitive) {
+        let idx = 0;
+        while ((idx = seg.text.indexOf(findText, idx)) !== -1) {
+          count++;
+          idx += findText.length;
+        }
+      } else {
+        const re = new RegExp(findText.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+        const matches = seg.text.match(re);
+        if (matches) count += matches.length;
+      }
+    }
+    return count;
+  }, [findText, caseSensitive, transcription.segments]);
+
   return (
     <div className="bg-white dark:bg-gray-800 rounded-lg p-6 border border-gray-200 dark:border-gray-700">
       <div className="flex items-center justify-between mb-6">
         <h3 className="text-lg font-bold text-gray-900 dark:text-white">Transcript</h3>
-        <button
-          onClick={copyToClipboard}
-          className="flex items-center gap-2 px-3 py-2 bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
-        >
-          {copied ? (
-            <>
-              <Check className="w-4 h-4" />
-              Copied
-            </>
-          ) : (
-            <>
-              <Copy className="w-4 h-4" />
-              Copy All
-            </>
+        <div className="flex items-center gap-2">
+          {onFindReplace && (
+            <button
+              onClick={() => setShowFindReplace(!showFindReplace)}
+              className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-colors ${
+                showFindReplace
+                  ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300'
+                  : 'bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-300 dark:hover:bg-gray-600'
+              }`}
+              title="Find & Replace"
+            >
+              <Search className="w-4 h-4" />
+              Find & Replace
+            </button>
           )}
-        </button>
+          <button
+            onClick={copyToClipboard}
+            className="flex items-center gap-2 px-3 py-2 bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
+          >
+            {copied ? (
+              <>
+                <Check className="w-4 h-4" />
+                Copied
+              </>
+            ) : (
+              <>
+                <Copy className="w-4 h-4" />
+                Copy All
+              </>
+            )}
+          </button>
+        </div>
       </div>
+
+      {/* Find & Replace bar */}
+      {showFindReplace && onFindReplace && (
+        <div className="mb-4 p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg border border-gray-200 dark:border-gray-600">
+          <div className="flex flex-col sm:flex-row gap-2">
+            <div className="flex-1 relative">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+              <input
+                type="text"
+                value={findText}
+                onChange={(e) => setFindText(e.target.value)}
+                placeholder="Find..."
+                className="w-full pl-8 pr-3 py-1.5 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white border border-gray-300 dark:border-gray-600 rounded focus:outline-none focus:ring-2 focus:ring-blue-500/50"
+                onKeyDown={(e) => e.key === 'Enter' && handleFindReplace()}
+              />
+            </div>
+            <div className="flex-1 relative">
+              <Replace className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+              <input
+                type="text"
+                value={replaceText}
+                onChange={(e) => setReplaceText(e.target.value)}
+                placeholder="Replace with..."
+                className="w-full pl-8 pr-3 py-1.5 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white border border-gray-300 dark:border-gray-600 rounded focus:outline-none focus:ring-2 focus:ring-blue-500/50"
+                onKeyDown={(e) => e.key === 'Enter' && handleFindReplace()}
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <label className="flex items-center gap-1.5 text-xs text-gray-600 dark:text-gray-400 cursor-pointer select-none" title="When checked, matching is case-sensitive (e.g. 'Hello' won't match 'hello')">
+                <input
+                  type="checkbox"
+                  checked={caseSensitive}
+                  onChange={(e) => setCaseSensitive(e.target.checked)}
+                  className="rounded border-gray-300 dark:border-gray-600"
+                />
+                Match case
+              </label>
+              <button
+                onClick={handleFindReplace}
+                disabled={!findText.trim()}
+                className="px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white rounded font-medium transition-colors whitespace-nowrap"
+              >
+                Replace All
+              </button>
+            </div>
+          </div>
+          <div className="mt-2 flex items-center gap-2 text-xs">
+            {findText.trim() && (
+              <span className={`${matchCount > 0 ? 'text-blue-600 dark:text-blue-400' : 'text-gray-400'}`}>
+                {matchCount} match{matchCount !== 1 ? 'es' : ''} found
+              </span>
+            )}
+            {findReplaceStatus && (
+              <span className={`${findReplaceStatus.includes('success') ? 'text-green-600 dark:text-green-400' : 'text-amber-600 dark:text-amber-400'}`}>
+                {findReplaceStatus}
+              </span>
+            )}
+          </div>
+        </div>
+      )}
 
       <div ref={scrollContainerRef} className="space-y-3 max-h-96 overflow-y-auto scroll-smooth">
         {transcription.segments.map((segment, idx) => {
@@ -299,7 +466,34 @@ export function TranscriptionViewer({ transcription, onSpeakerUpdate, onSegmentR
                     )}
                   </div>
                 )}
-                <p className="text-sm text-gray-700 dark:text-gray-300">{segment.text}</p>
+                {editingTextIndex === idx ? (
+                  <textarea
+                    ref={editTextRef}
+                    value={editTextValue}
+                    onChange={(e) => {
+                      setEditTextValue(e.target.value);
+                      e.target.style.height = 'auto';
+                      e.target.style.height = e.target.scrollHeight + 'px';
+                    }}
+                    onBlur={saveTextEdit}
+                    onKeyDown={handleTextKeyDown}
+                    className="w-full text-sm text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 border-2 border-blue-500 rounded px-2 py-1 outline-none resize-none"
+                    rows={1}
+                  />
+                ) : (
+                  <p
+                    className={`text-sm text-gray-700 dark:text-gray-300 ${
+                      onSegmentTextUpdate ? 'cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600/50 rounded px-1 -mx-1 transition-colors' : ''
+                    }`}
+                    onClick={() => startTextEditing(idx)}
+                    title={onSegmentTextUpdate ? 'Click to edit text' : undefined}
+                  >
+                    {segment.text}
+                    {onSegmentTextUpdate && (
+                      <Pencil className="w-3 h-3 inline-block ml-1 opacity-0 group-hover:opacity-40 transition-opacity" />
+                    )}
+                  </p>
+                )}
               </div>
             </div>
           );

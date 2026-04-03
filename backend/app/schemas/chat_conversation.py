@@ -43,6 +43,7 @@ class ChatConversationListItem(BaseModel):
     transcription_id: Optional[uuid.UUID] = None
     user_id: uuid.UUID
     title: str
+    transcription_name: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 
