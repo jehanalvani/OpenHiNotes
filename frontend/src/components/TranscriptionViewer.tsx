@@ -339,14 +339,14 @@ export function TranscriptionViewer({ transcription, onSpeakerUpdate, onSegmentR
               />
             </div>
             <div className="flex items-center gap-2">
-              <label className="flex items-center gap-1.5 text-xs text-gray-600 dark:text-gray-400 cursor-pointer select-none">
+              <label className="flex items-center gap-1.5 text-xs text-gray-600 dark:text-gray-400 cursor-pointer select-none" title="When checked, matching is case-sensitive (e.g. 'Hello' won't match 'hello')">
                 <input
                   type="checkbox"
                   checked={caseSensitive}
                   onChange={(e) => setCaseSensitive(e.target.checked)}
                   className="rounded border-gray-300 dark:border-gray-600"
                 />
-                Aa
+                Match case
               </label>
               <button
                 onClick={handleFindReplace}
