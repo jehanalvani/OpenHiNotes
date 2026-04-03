@@ -55,4 +55,6 @@ export const chatConversationsApi = {
   },
 
   async delete(id: string): Promise<void> {
-    return apiC
+    return apiClient.delete<void>(`/chat-conversations/${id}`);
+  },
+};
