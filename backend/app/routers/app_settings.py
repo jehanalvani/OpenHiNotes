@@ -115,6 +115,48 @@ async def get_settings(
     return SettingsResponse(settings=settings_list)
 
 
+# ── Registration Settings ──────────────────────────────────────────────
+# These must be defined BEFORE the generic /{key} routes below,
+# otherwise FastAPI matches PUT /settings/registration to /{key}
+# with key="registration", causing a 422.
+
+
+class RegistrationSettingsUpdate(BaseModel):
+    registration_enabled: Optional[bool] = None
+    approval_required: Optional[bool] = None
+    allowed_domains: Optional[list[str]] = None
+
+
+@router.get("/registration")
+async def get_registration_settings(
+    current_user: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get registration settings (admin only)."""
+    data = await RegistrationSettingsService.get_all(db)
+    return data
+
+
+@router.put("/registration")
+async def update_registration_settings(
+    body: RegistrationSettingsUpdate,
+    current_user: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Update registration settings (admin only)."""
+    if body.registration_enabled is not None:
+        await RegistrationSettingsService.set_registration_enabled(db, body.registration_enabled)
+    if body.approval_required is not None:
+        await RegistrationSettingsService.set_approval_required(db, body.approval_required)
+    if body.allowed_domains is not None:
+        await RegistrationSettingsService.set_allowed_domains(db, body.allowed_domains)
+    await db.commit()
+    return await RegistrationSettingsService.get_all(db)
+
+
+# ── Generic key/value settings ─────────────────────────────────────────
+
+
 @router.put("/{key}")
 async def update_setting(
     key: str,
@@ -161,39 +203,3 @@ async def reset_setting(
         await db.commit()
 
     return {"key": key, "status": "reset_to_default"}
-
-
-# ── Registration Settings ──────────────────────────────────────────────
-
-
-class RegistrationSettingsUpdate(BaseModel):
-    registration_enabled: Optional[bool] = None
-    approval_required: Optional[bool] = None
-    allowed_domains: Optional[list[str]] = None
-
-
-@router.get("/registration")
-async def get_registration_settings(
-    current_user: User = Depends(require_admin),
-    db: AsyncSession = Depends(get_db),
-):
-    """Get registration settings (admin only)."""
-    data = await RegistrationSettingsService.get_all(db)
-    return data
-
-
-@router.put("/registration")
-async def update_registration_settings(
-    body: RegistrationSettingsUpdate,
-    current_user: User = Depends(require_admin),
-    db: AsyncSession = Depends(get_db),
-):
-    """Update registration settings (admin only)."""
-    if body.registration_enabled is not None:
-        await RegistrationSettingsService.set_registration_enabled(db, body.registration_enabled)
-    if body.approval_required is not None:
-        await RegistrationSettingsService.set_approval_required(db, body.approval_required)
-    if body.allowed_domains is not None:
-        await RegistrationSettingsService.set_allowed_domains(db, body.allowed_domains)
-    await db.commit()
-    return await RegistrationSettingsService.get_all(db)
