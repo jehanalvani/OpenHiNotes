@@ -679,4 +679,23 @@ async def delete_transcription(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Delete a transcription. Only owners and admins can delete."
+    """Delete a transcription. Only owners and admins can delete."""
+    transcription = await TranscriptionService.get_transcription(db, transcription_id)
+
+    if not transcription:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Transcription not found",
+        )
+
+    # Only owners and admins can delete
+    level = await PermissionService.get_permission_level(
+        db, current_user, ResourceType.transcription, transcription_id
+    )
+    if level != "owner":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only owners can delete transcriptions",
+        )
+
+    await TranscriptionService.delete_transcription(db, transcription_id)

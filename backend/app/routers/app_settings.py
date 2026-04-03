@@ -199,4 +199,11 @@ async def reset_setting(
     if key not in CONFIGURABLE_KEYS:
         raise HTTPException(status_code=400, detail=f"Unknown setting: {key}")
 
-    result = await db.execute(select(AppSetting).whe
+    result = await db.execute(select(AppSetting).where(AppSetting.key == key))
+    setting = result.scalars().first()
+
+    if setting:
+        await db.delete(setting)
+        await db.commit()
+
+    return {"key": key, "status": "reset_to_default"}
