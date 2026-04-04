@@ -76,7 +76,7 @@ export function Dashboard() {
   };
 
   return (
-    <Layout title="Dashboard" deviceConnected={device?.connected}>
+    <Layout title="Dashboard">
       {/* Welcome Section */}
       <div className="mb-8">
         <h2 className="text-2xl font-bold text-gray-900 dark:text-white">

@@ -64,7 +64,7 @@ async def upload_transcription(
     db: AsyncSession = Depends(get_db),
 ):
     """Upload audio file and create transcription."""
-    # Normalize language: "auto" means let VoxBench auto-detect (omit param)
+    # Normalize language: "auto" means let VoxHub auto-detect (omit param)
     if language and language.lower() == "auto":
         language = None
 
@@ -154,7 +154,7 @@ async def upload_transcription_stream(
       - {"event": "complete", "transcription": { ... }}
       - {"event": "error", "message": "..."}
     """
-    # Normalize language: "auto" means let VoxBench auto-detect (omit param)
+    # Normalize language: "auto" means let VoxHub auto-detect (omit param)
     if language and language.lower() == "auto":
         language = None
 
@@ -181,8 +181,8 @@ async def upload_transcription_stream(
     # Use an asyncio.Queue to bridge the on_progress callback → SSE generator
     progress_queue: asyncio.Queue = asyncio.Queue()
 
-    def on_progress(status_str: str, progress: float):
-        progress_queue.put_nowait(("progress", status_str, progress))
+    def on_progress(status_str: str, progress: float, stage: str = None):
+        progress_queue.put_nowait(("progress", status_str, progress, stage))
 
     async def run_transcription():
         """Run the transcription and push the result/error into the queue."""
@@ -240,11 +240,12 @@ async def upload_transcription_stream(
                 event_type = msg[0]
 
                 if event_type == "progress":
-                    _, status_str, progress = msg
+                    _, status_str, progress, stage = msg
                     data = json.dumps({
                         "event": "progress",
                         "status": status_str,
                         "progress": round(progress, 1),
+                        "stage": stage,
                     })
                     yield f"data: {data}\n\n"
 
@@ -255,6 +256,7 @@ async def upload_transcription_stream(
                     data = json.dumps({
                         "event": "complete",
                         "transcription": t_response.model_dump(mode="json"),
+                        "stage": None,
                     })
                     yield f"data: {data}\n\n"
                     break

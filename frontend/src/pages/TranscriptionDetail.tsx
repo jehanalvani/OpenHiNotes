@@ -101,11 +101,12 @@ export function TranscriptionDetail() {
 
   // Audio playback
   const recordings = useAppStore((s) => s.recordings);
-  const { downloadRecording } = useDeviceConnection();
+  const { downloadRecording, device } = useDeviceConnection();
   const audioRef = useRef<HTMLAudioElement>(null);
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
   const [audioSrc, setAudioSrc] = useState<string>('');
   const [isLoadingAudio, setIsLoadingAudio] = useState(false);
+  const [loadAudioProgress, setLoadAudioProgress] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [playbackTime, setPlaybackTime] = useState(0);
   const [audioDuration, setAudioDuration] = useState(0);
@@ -269,6 +270,13 @@ export function TranscriptionDetail() {
     audio.addEventListener('timeupdate', onTime);
     audio.addEventListener('loadedmetadata', onMeta);
     audio.addEventListener('ended', onEnd);
+
+    // loadedmetadata may have already fired before this effect ran (e.g. for blob
+    // URLs the browser parses metadata synchronously). Sync the duration now if so.
+    if (audio.readyState >= 1 && audio.duration && isFinite(audio.duration)) {
+      setAudioDuration(audio.duration);
+    }
+
     return () => {
       audio.removeEventListener('timeupdate', onTime);
       audio.removeEventListener('loadedmetadata', onMeta);
@@ -277,23 +285,41 @@ export function TranscriptionDetail() {
   }, [audioSrc]);
 
   const handleLoadAudio = useCallback(async () => {
-    if (!sourceRecording || !transcription) return;
+    if (!transcription) return;
     setIsLoadingAudio(true);
+    setLoadAudioProgress(0);
     try {
       const cached = deviceService.getCachedBlob(transcription.original_filename);
       if (cached) {
         setAudioBlob(cached);
-        setIsLoadingAudio(false);
         return;
       }
+
+      // Use the already-known sourceRecording, or re-fetch the list from the
+      // device if recordings haven't been loaded yet (e.g. after a page refresh).
+      let rec = sourceRecording;
+      if (!rec && deviceService.isConnected()) {
+        try {
+          const freshRecs = await deviceService.getFileList();
+          rec = freshRecs.find((r) => r.fileName === transcription.original_filename);
+        } catch (e) {
+          console.warn('[OpenHiNotes] Could not refresh recording list:', e);
+        }
+      }
+
+      if (!rec) {
+        console.error('[OpenHiNotes] Recording not found on device:', transcription.original_filename);
+        return;
+      }
+
       const blob = await downloadRecording(
-        sourceRecording.fileName,
-        sourceRecording.size,
-        undefined,
-        sourceRecording.fileVersion,
+        rec.fileName,
+        rec.size,
+        (pct) => setLoadAudioProgress(Math.round(pct)),
+        rec.fileVersion,
       );
       if (blob) {
-        deviceService.setCachedBlob(sourceRecording.fileName, blob);
+        deviceService.setCachedBlob(rec.fileName, blob);
         setAudioBlob(blob);
       }
     } catch (err) {
@@ -598,20 +624,31 @@ export function TranscriptionDetail() {
                   )}
                 </div>
               </div>
-            ) : sourceRecording ? (
-              <div className="px-5 py-4 flex items-center gap-3">
-                <Play className="w-4 h-4 text-gray-400 flex-shrink-0" />
-                <span className="text-sm text-gray-600 dark:text-gray-400 flex-1">
-                  Source recording available on device
-                </span>
-                <button
-                  onClick={handleLoadAudio}
-                  disabled={isLoadingAudio}
-                  className="px-4 py-1.5 text-sm font-medium bg-primary-600 hover:bg-primary-700 text-white rounded-lg transition-colors disabled:opacity-50 flex items-center gap-2"
-                >
-                  {isLoadingAudio ? <Loader className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
-                  {isLoadingAudio ? 'Loading...' : 'Load Audio'}
-                </button>
+            ) : (sourceRecording || device?.connected) ? (
+              <div className="px-5 py-4 space-y-2">
+                <div className="flex items-center gap-3">
+                  <Play className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                  <span className="text-sm text-gray-600 dark:text-gray-400 flex-1">
+                    {sourceRecording ? 'Source recording available on device' : 'Device connected — click to load audio'}
+                  </span>
+                  <button
+                    onClick={handleLoadAudio}
+                    disabled={isLoadingAudio || !device?.connected}
+                    title={!device?.connected ? 'Connect your device to load audio' : undefined}
+                    className="px-4 py-1.5 text-sm font-medium bg-primary-600 hover:bg-primary-700 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                  >
+                    {isLoadingAudio ? <Loader className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
+                    {isLoadingAudio ? `Loading… ${loadAudioProgress}%` : 'Load Audio'}
+                  </button>
+                </div>
+                {isLoadingAudio && (
+                  <div className="w-full bg-gray-200 dark:bg-gray-600 rounded-full h-1.5 overflow-hidden">
+                    <div
+                      className="bg-primary-600 h-1.5 rounded-full transition-all duration-200"
+                      style={{ width: `${loadAudioProgress}%` }}
+                    />
+                  </div>
+                )}
               </div>
             ) : null}
           </div>
