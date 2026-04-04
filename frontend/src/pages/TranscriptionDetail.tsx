@@ -106,6 +106,7 @@ export function TranscriptionDetail() {
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
   const [audioSrc, setAudioSrc] = useState<string>('');
   const [isLoadingAudio, setIsLoadingAudio] = useState(false);
+  const [loadAudioProgress, setLoadAudioProgress] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [playbackTime, setPlaybackTime] = useState(0);
   const [audioDuration, setAudioDuration] = useState(0);
@@ -286,6 +287,7 @@ export function TranscriptionDetail() {
   const handleLoadAudio = useCallback(async () => {
     if (!transcription) return;
     setIsLoadingAudio(true);
+    setLoadAudioProgress(0);
     try {
       const cached = deviceService.getCachedBlob(transcription.original_filename);
       if (cached) {
@@ -313,7 +315,7 @@ export function TranscriptionDetail() {
       const blob = await downloadRecording(
         rec.fileName,
         rec.size,
-        undefined,
+        (pct) => setLoadAudioProgress(Math.round(pct)),
         rec.fileVersion,
       );
       if (blob) {
@@ -623,19 +625,29 @@ export function TranscriptionDetail() {
                 </div>
               </div>
             ) : (sourceRecording || device?.connected) ? (
-              <div className="px-5 py-4 flex items-center gap-3">
-                <Play className="w-4 h-4 text-gray-400 flex-shrink-0" />
-                <span className="text-sm text-gray-600 dark:text-gray-400 flex-1">
-                  {sourceRecording ? 'Source recording available on device' : 'Device connected — click to load audio'}
-                </span>
-                <button
-                  onClick={handleLoadAudio}
-                  disabled={isLoadingAudio}
-                  className="px-4 py-1.5 text-sm font-medium bg-primary-600 hover:bg-primary-700 text-white rounded-lg transition-colors disabled:opacity-50 flex items-center gap-2"
-                >
-                  {isLoadingAudio ? <Loader className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
-                  {isLoadingAudio ? 'Loading...' : 'Load Audio'}
-                </button>
+              <div className="px-5 py-4 space-y-2">
+                <div className="flex items-center gap-3">
+                  <Play className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                  <span className="text-sm text-gray-600 dark:text-gray-400 flex-1">
+                    {sourceRecording ? 'Source recording available on device' : 'Device connected — click to load audio'}
+                  </span>
+                  <button
+                    onClick={handleLoadAudio}
+                    disabled={isLoadingAudio}
+                    className="px-4 py-1.5 text-sm font-medium bg-primary-600 hover:bg-primary-700 text-white rounded-lg transition-colors disabled:opacity-50 flex items-center gap-2"
+                  >
+                    {isLoadingAudio ? <Loader className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
+                    {isLoadingAudio ? `Loading… ${loadAudioProgress}%` : 'Load Audio'}
+                  </button>
+                </div>
+                {isLoadingAudio && (
+                  <div className="w-full bg-gray-200 dark:bg-gray-600 rounded-full h-1.5 overflow-hidden">
+                    <div
+                      className="bg-primary-600 h-1.5 rounded-full transition-all duration-200"
+                      style={{ width: `${loadAudioProgress}%` }}
+                    />
+                  </div>
+                )}
               </div>
             ) : null}
           </div>
