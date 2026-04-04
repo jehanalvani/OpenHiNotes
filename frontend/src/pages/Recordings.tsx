@@ -395,7 +395,7 @@ export function Recordings() {
   const hasSelection = selectedRecordings.length > 0;
 
   return (
-    <Layout title="Recordings" deviceConnected={device?.connected}>
+    <Layout title="Recordings">
       {error && (
         <div className="mb-6 p-4 bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-300 rounded-lg">
           {error}

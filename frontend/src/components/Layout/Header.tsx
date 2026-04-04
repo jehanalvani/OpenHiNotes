@@ -6,13 +6,13 @@ import { useAppStore } from '@/store/useAppStore';
 
 interface HeaderProps {
   title: string;
-  deviceConnected?: boolean;
 }
 
-export function Header({ title, deviceConnected = false }: HeaderProps) {
+export function Header({ title }: HeaderProps) {
   const navigate = useNavigate();
   const { user, logout } = useAuthStore();
-  const { theme, setTheme } = useAppStore();
+  const { theme, setTheme, device } = useAppStore();
+  const deviceConnected = device?.connected ?? false;
   const [showUserMenu, setShowUserMenu] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 

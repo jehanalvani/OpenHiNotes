@@ -633,8 +633,9 @@ export function TranscriptionDetail() {
                   </span>
                   <button
                     onClick={handleLoadAudio}
-                    disabled={isLoadingAudio}
-                    className="px-4 py-1.5 text-sm font-medium bg-primary-600 hover:bg-primary-700 text-white rounded-lg transition-colors disabled:opacity-50 flex items-center gap-2"
+                    disabled={isLoadingAudio || !device?.connected}
+                    title={!device?.connected ? 'Connect your device to load audio' : undefined}
+                    className="px-4 py-1.5 text-sm font-medium bg-primary-600 hover:bg-primary-700 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                   >
                     {isLoadingAudio ? <Loader className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
                     {isLoadingAudio ? `Loading… ${loadAudioProgress}%` : 'Load Audio'}
