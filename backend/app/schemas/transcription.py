@@ -69,6 +69,14 @@ class TranscriptionResponse(BaseModel):
     status: str
     error_message: Optional[str] = None
     notes: Optional[str] = None
+    queue_position: Optional[int] = None
+    progress: Optional[float] = None
+    progress_stage: Optional[str] = None
+    queued_at: Optional[datetime] = None
+    started_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+    keep_audio: bool = False
+    audio_available: bool = False
     created_at: datetime
     updated_at: datetime
     # Access control fields (populated by routers, not from DB)
@@ -83,6 +91,13 @@ class TranscriptionUpdate(BaseModel):
     """Schema for transcription updates."""
     speakers: Optional[Dict[str, str]] = None
     notes: Optional[str] = None
+
+
+class QueueStatusResponse(BaseModel):
+    """Queue status for all active/queued transcriptions."""
+    queue: List[TranscriptionResponse]
+    total_in_queue: int
+    currently_processing: Optional[TranscriptionResponse] = None
 
 
 class PaginatedTranscriptionResponse(BaseModel):

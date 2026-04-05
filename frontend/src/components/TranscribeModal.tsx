@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { X, Loader, CheckCircle, ExternalLink } from 'lucide-react';
+import { X, Loader, CheckCircle, ExternalLink, Server } from 'lucide-react';
 import { Transcription, SummaryTemplate } from '@/types';
 import { transcriptionsApi } from '@/api/transcriptions';
 import { collectionsApi } from '@/api/collections';
 import { templatesApi } from '@/api/templates';
+import { settingsApi } from '@/api/settings';
+import { useQueueStore } from '@/store/useQueueStore';
 
 interface TranscribeModalProps {
   isOpen: boolean;
@@ -41,16 +43,24 @@ export function TranscribeModal({
   onComplete,
 }: TranscribeModalProps) {
   const navigate = useNavigate();
-  const [isTranscribing, setIsTranscribing] = useState(false);
-  const [progress, setProgress] = useState(0);
-  const [progressStatus, setProgressStatus] = useState('');
-  const [progressStage, setProgressStage] = useState<'loading' | 'vad' | 'transcribing' | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [language, setLanguage] = useState('auto');
+  const [keepAudio, setKeepAudio] = useState(false);
   const [autoSummarize, setAutoSummarize] = useState(false);
   const [selectedTemplate, setSelectedTemplate] = useState<string>('');
   const [templates, setTemplates] = useState<SummaryTemplate[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [completedTranscription, setCompletedTranscription] = useState<Transcription | null>(null);
+  const [submittedTranscription, setSubmittedTranscription] = useState<Transcription | null>(null);
+  const [keepAudioAllowed, setKeepAudioAllowed] = useState(true);
+
+  useEffect(() => {
+    settingsApi.getAudioSettings()
+      .then((s) => {
+        setKeepAudioAllowed(s.keep_audio_enabled);
+        if (!s.keep_audio_enabled) setKeepAudio(false);
+      })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (autoSummarize) {
@@ -70,37 +80,25 @@ export function TranscribeModal({
     }
   };
 
-  const handleTranscribe = async () => {
+  const handleSubmit = async () => {
     if (!audioFile) return;
 
-    setIsTranscribing(true);
-    setProgress(0);
+    setIsSubmitting(true);
     setError(null);
 
     try {
       const file = new File([audioFile], fileName, { type: 'audio/wav' });
 
-      const transcription = await transcriptionsApi.uploadAndTranscribeStream(
+      // Always use queue — returns immediately
+      const transcription = await transcriptionsApi.queueTranscription(
         file,
         language,
+        keepAudio,
         autoSummarize,
         autoSummarize ? selectedTemplate : undefined,
-        (status, pct, stage) => {
-          setProgressStatus(status);
-          setProgress(Math.round(pct));
-          setProgressStage(stage);
-        },
       );
 
-      // Check if the transcription actually succeeded
-      if (transcription.status === 'failed') {
-        setError(transcription.error_message || 'Transcription failed on the server');
-        setIsTranscribing(false);
-        setProgress(0);
-        return;
-      }
-
-      // If an alias / initial title was provided, set it as the transcription title
+      // If an alias / initial title was provided, set it
       if (initialTitle && transcription.id) {
         try {
           await transcriptionsApi.updateTitle(transcription.id, initialTitle);
@@ -110,7 +108,7 @@ export function TranscribeModal({
         }
       }
 
-      // If a collection was pre-assigned, assign the transcription to it
+      // If a collection was pre-assigned, assign it
       if (initialCollectionId && transcription.id) {
         try {
           await collectionsApi.assignTranscription(initialCollectionId, transcription.id);
@@ -120,14 +118,16 @@ export function TranscribeModal({
         }
       }
 
-      setProgress(100);
-      setIsTranscribing(false);
-      setCompletedTranscription(transcription);
+      // Add to queue store (starts SSE streaming automatically for real-time progress)
+      useQueueStore.getState().addQueueItem(transcription);
+
+      setIsSubmitting(false);
+      setSubmittedTranscription(transcription);
       onComplete(transcription);
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Transcription failed';
+      const message = err instanceof Error ? err.message : 'Failed to queue transcription';
       setError(message);
-      setIsTranscribing(false);
+      setIsSubmitting(false);
     }
   };
 
@@ -175,7 +175,7 @@ export function TranscribeModal({
             <select
               value={language}
               onChange={(e) => setLanguage(e.target.value)}
-              disabled={isTranscribing}
+              disabled={isSubmitting}
               className="w-full px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
             >
               {LANGUAGES.map((lang) => (
@@ -186,13 +186,36 @@ export function TranscribeModal({
             </select>
           </div>
 
-          <div>
+          <div className="space-y-3">
+            {keepAudioAllowed && (
+              <>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={keepAudio}
+                    onChange={(e) => setKeepAudio(e.target.checked)}
+                    disabled={isSubmitting}
+                    className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+                  />
+                  <Server className="w-4 h-4 text-gray-400" />
+                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                    Save audio on server
+                  </span>
+                </label>
+                {keepAudio && (
+                  <p className="text-xs text-gray-500 dark:text-gray-400 ml-6 pl-4">
+                    Audio will be saved on the server and playable from the transcription. Anyone with access to the transcript can listen.
+                  </p>
+                )}
+              </>
+            )}
+
             <label className="flex items-center gap-2 cursor-pointer">
               <input
                 type="checkbox"
                 checked={autoSummarize}
                 onChange={(e) => setAutoSummarize(e.target.checked)}
-                disabled={isTranscribing}
+                disabled={isSubmitting}
                 className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
               />
               <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
@@ -209,7 +232,7 @@ export function TranscribeModal({
               <select
                 value={selectedTemplate}
                 onChange={(e) => setSelectedTemplate(e.target.value)}
-                disabled={isTranscribing}
+                disabled={isSubmitting}
                 className="w-full px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
               >
                 <option value="">Select a template...</option>
@@ -221,53 +244,27 @@ export function TranscribeModal({
               </select>
             </div>
           )}
-
-          {isTranscribing && (
-            <div>
-             <div className="flex justify-between items-center mb-2">
-               <p className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                 {progressStatus === 'uploading'
-                   ? 'Uploading to server...'
-                   : progressStatus === 'completed'
-                     ? 'Completed!'
-                     : progressStage === 'loading'
-                       ? 'Loading model...'
-                       : progressStage === 'vad'
-                         ? 'Detecting speech segments...'
-                         : progressStage === 'transcribing'
-                           ? 'Transcribing audio...'
-                           : 'Processing...'}
-               </p>
-               <span className="text-sm text-gray-500 dark:text-gray-400">{progress}%</span>
-             </div>
-              <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
-                <div
-                  className="bg-blue-600 h-2 rounded-full transition-all duration-300"
-                  style={{ width: `${progress}%` }}
-                />
-              </div>
-            </div>
-          )}
         </div>
 
-        {completedTranscription ? (
+        {submittedTranscription ? (
           <div className="mt-6 space-y-4">
-            <div className="flex items-center gap-3 p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
-              <CheckCircle className="w-5 h-5 text-green-600 dark:text-green-400 flex-shrink-0" />
+            <div className="flex items-center gap-3 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+              <CheckCircle className="w-5 h-5 text-blue-600 dark:text-blue-400 flex-shrink-0" />
               <div className="min-w-0 flex-1">
-                <p className="text-sm font-medium text-green-800 dark:text-green-300">
-                  Transcription complete!
+                <p className="text-sm font-medium text-blue-800 dark:text-blue-300">
+                  Sent to queue!
                 </p>
-                <p className="text-xs text-green-600 dark:text-green-400 mt-0.5 truncate">
-                  {completedTranscription.title || completedTranscription.original_filename}
+                <p className="text-xs text-blue-600 dark:text-blue-400 mt-0.5">
+                  {submittedTranscription.queue_position
+                    ? `Position ${submittedTranscription.queue_position} — track progress from the queue icon in the header`
+                    : 'Track progress from the queue icon in the header'}
                 </p>
               </div>
             </div>
             <div className="flex gap-3">
               <button
                 onClick={() => {
-                  setCompletedTranscription(null);
-                  setProgress(0);
+                  setSubmittedTranscription(null);
                   onClose();
                 }}
                 className="flex-1 px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors font-medium"
@@ -276,16 +273,15 @@ export function TranscribeModal({
               </button>
               <button
                 onClick={() => {
-                  const id = completedTranscription.id;
-                  setCompletedTranscription(null);
-                  setProgress(0);
+                  const id = submittedTranscription.id;
+                  setSubmittedTranscription(null);
                   onClose();
                   navigate(`/transcriptions/${id}`);
                 }}
                 className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors font-medium flex items-center justify-center gap-2"
               >
                 <ExternalLink className="w-4 h-4" />
-                View Transcript
+                View Status
               </button>
             </div>
           </div>
@@ -293,18 +289,18 @@ export function TranscribeModal({
           <div className="flex gap-3 mt-6">
             <button
               onClick={onClose}
-              disabled={isTranscribing}
+              disabled={isSubmitting}
               className="flex-1 px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors disabled:opacity-50 font-medium"
             >
               Cancel
             </button>
             <button
-              onClick={handleTranscribe}
-              disabled={isTranscribing || !audioFile}
+              onClick={handleSubmit}
+              disabled={isSubmitting || !audioFile}
               className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors disabled:opacity-50 font-medium flex items-center justify-center gap-2"
             >
-              {isTranscribing && <Loader className="w-4 h-4 animate-spin" />}
-              {autoSummarize ? 'Transcribe & Summarize' : 'Transcribe'}
+              {isSubmitting && <Loader className="w-4 h-4 animate-spin" />}
+              {isSubmitting ? 'Sending...' : autoSummarize ? 'Transcribe & Summarize' : 'Transcribe'}
             </button>
           </div>
         )}

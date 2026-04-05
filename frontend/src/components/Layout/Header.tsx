@@ -3,6 +3,7 @@ import { LogOut, Moon, Sun, Settings } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
 import { useAuthStore } from '@/store/useAuthStore';
 import { useAppStore } from '@/store/useAppStore';
+import { QueueIndicator } from '@/components/QueuePanel';
 
 interface HeaderProps {
   title: string;
@@ -54,6 +55,9 @@ export function Header({ title }: HeaderProps) {
             <span className="text-xs font-medium text-green-700 dark:text-green-300">Device Connected</span>
           </div>
         )}
+
+        {/* Queue indicator */}
+        <QueueIndicator />
 
         {/* Theme toggle */}
         <button
