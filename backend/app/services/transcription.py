@@ -176,16 +176,20 @@ class TranscriptionService:
         await _call_progress(on_progress, "processing", 0, "waiting")
 
         # Step 2: Poll for completion
+        # Timeout resets whenever status or progress changes, so long-running
+        # transcriptions won't be killed as long as VoxHub is making progress.
         poll_url = f"{base}/v1/audio/transcriptions/jobs/{job_id}"
-        max_wait = 600  # 10 minutes max
-        elapsed = 0
+        stale_timeout = 300  # 5 minutes without any change = stale
         poll_interval = 3
         status = "unknown"
+        last_progress = -1.0
+        last_stage = None
+        seconds_since_change = 0
 
         async with httpx.AsyncClient(timeout=30.0, verify=settings.voxhub_ssl_verify) as client:
-            while elapsed < max_wait:
+            while seconds_since_change < stale_timeout:
                 await asyncio.sleep(poll_interval)
-                elapsed += poll_interval
+                seconds_since_change += poll_interval
 
                 poll_resp = await client.get(poll_url, headers=headers)
                 if poll_resp.status_code != 200:
@@ -199,6 +203,12 @@ class TranscriptionService:
 
                 await _call_progress(on_progress, status, progress, stage)
 
+                # Reset stale timer on any change
+                if progress != last_progress or stage != last_stage or status != "processing":
+                    seconds_since_change = 0
+                    last_progress = progress
+                    last_stage = stage
+
                 if status == "completed":
                     break
                 elif status == "failed":
@@ -207,7 +217,7 @@ class TranscriptionService:
                 # Keep polling for "processing", "queued", etc.
 
         if status != "completed":
-            raise Exception(f"VoxHub job timed out after {max_wait}s (status={status})")
+            raise Exception(f"VoxHub job timed out (no progress for {stale_timeout}s, status={status})")
 
         # Step 3: Fetch result with verbose_json to get segments & speaker labels
         result_url = f"{base}/v1/audio/transcriptions/jobs/{job_id}/result"
