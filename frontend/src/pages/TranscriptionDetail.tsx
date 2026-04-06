@@ -112,6 +112,34 @@ export function TranscriptionDetail() {
   const [audioDuration, setAudioDuration] = useState(0);
   const [volume, setVolume] = useState(1);
 
+  // Subscribe to real-time updates when transcription is queued/processing
+  useEffect(() => {
+    if (!transcription) return;
+    if (transcription.status !== 'queued' && transcription.status !== 'processing') return;
+
+    const abort = transcriptionsApi.streamQueueStatus(
+      transcription.id,
+      (event) => {
+        setTranscription((prev) => {
+          if (!prev) return prev;
+          const updates: Partial<Transcription> = {};
+          if (event.progress != null) updates.progress = event.progress;
+          if (event.stage !== undefined) updates.progress_stage = event.stage ?? null;
+          if (event.queue_position != null) updates.queue_position = event.queue_position;
+          if (event.status) updates.status = event.status as Transcription['status'];
+          if (event.event === 'completed' || event.event === 'failed' || event.event === 'cancelled') {
+            // Reload full data when done
+            setTimeout(() => loadData(), 500);
+          }
+          return { ...prev, ...updates };
+        });
+      },
+      (err) => console.error('Queue stream error:', err),
+    );
+
+    return () => abort();
+  }, [transcription?.id, transcription?.status]);
+
   useEffect(() => {
     loadData();
   }, [id]);
@@ -284,6 +312,24 @@ export function TranscriptionDetail() {
     };
   }, [audioSrc]);
 
+  const handleLoadAudioFromServer = useCallback(async () => {
+    if (!transcription || !transcription.audio_available) return;
+    setIsLoadingAudio(true);
+    setLoadAudioProgress(0);
+    try {
+      const blobUrl = await transcriptionsApi.getAudioBlobUrl(transcription.id);
+      // Fetch as blob for the audio element
+      const resp = await fetch(blobUrl);
+      const blob = await resp.blob();
+      setAudioBlob(blob);
+      setLoadAudioProgress(100);
+    } catch (err) {
+      console.error('Failed to load audio from server:', err);
+    } finally {
+      setIsLoadingAudio(false);
+    }
+  }, [transcription]);
+
   const handleLoadAudio = useCallback(async () => {
     if (!transcription) return;
     setIsLoadingAudio(true);
@@ -328,6 +374,13 @@ export function TranscriptionDetail() {
       setIsLoadingAudio(false);
     }
   }, [sourceRecording, transcription, downloadRecording]);
+
+  // Auto-load audio from server if it's available and kept
+  useEffect(() => {
+    if (transcription?.audio_available && transcription?.keep_audio && !audioBlob && !isLoadingAudio) {
+      handleLoadAudioFromServer();
+    }
+  }, [transcription?.id, transcription?.audio_available, transcription?.keep_audio]);
 
   const togglePlayback = useCallback(() => {
     const audio = audioRef.current;
@@ -555,8 +608,20 @@ export function TranscriptionDetail() {
           <div className="bg-white dark:bg-gray-800 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
             <p className="text-xs text-gray-600 dark:text-gray-400 mb-1">Status</p>
             <p className="font-semibold text-gray-900 dark:text-white capitalize">
-              {transcription.status}
+              {transcription.status === 'queued'
+                ? `Queued (#${transcription.queue_position || '?'})`
+                : transcription.status === 'processing'
+                  ? `Processing${transcription.progress ? ` ${Math.round(transcription.progress)}%` : ''}`
+                  : transcription.status}
             </p>
+            {transcription.status === 'processing' && transcription.progress != null && (
+              <div className="mt-2 w-full bg-gray-200 dark:bg-gray-600 rounded-full h-1.5">
+                <div
+                  className="bg-blue-500 h-1.5 rounded-full transition-all duration-500"
+                  style={{ width: `${Math.max(2, transcription.progress)}%` }}
+                />
+              </div>
+            )}
           </div>
           <div className="bg-white dark:bg-gray-800 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
             <p className="text-xs text-gray-600 dark:text-gray-400 mb-1">Date</p>
@@ -624,22 +689,37 @@ export function TranscriptionDetail() {
                   )}
                 </div>
               </div>
-            ) : (sourceRecording || device?.connected) ? (
+            ) : (sourceRecording || device?.connected || transcription.audio_available) ? (
               <div className="px-5 py-4 space-y-2">
                 <div className="flex items-center gap-3">
                   <Play className="w-4 h-4 text-gray-400 flex-shrink-0" />
                   <span className="text-sm text-gray-600 dark:text-gray-400 flex-1">
-                    {sourceRecording ? 'Source recording available on device' : 'Device connected — click to load audio'}
+                    {transcription.audio_available
+                      ? 'Audio stored on server'
+                      : sourceRecording
+                        ? 'Source recording available on device'
+                        : 'Device connected — click to load audio'}
                   </span>
-                  <button
-                    onClick={handleLoadAudio}
-                    disabled={isLoadingAudio || !device?.connected}
-                    title={!device?.connected ? 'Connect your device to load audio' : undefined}
-                    className="px-4 py-1.5 text-sm font-medium bg-primary-600 hover:bg-primary-700 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                  >
-                    {isLoadingAudio ? <Loader className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
-                    {isLoadingAudio ? `Loading… ${loadAudioProgress}%` : 'Load Audio'}
-                  </button>
+                  {transcription.audio_available ? (
+                    <button
+                      onClick={handleLoadAudioFromServer}
+                      disabled={isLoadingAudio}
+                      className="px-4 py-1.5 text-sm font-medium bg-primary-600 hover:bg-primary-700 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                    >
+                      {isLoadingAudio ? <Loader className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
+                      {isLoadingAudio ? `Loading… ${loadAudioProgress}%` : 'Load Audio'}
+                    </button>
+                  ) : (
+                    <button
+                      onClick={handleLoadAudio}
+                      disabled={isLoadingAudio || !device?.connected}
+                      title={!device?.connected ? 'Connect your device to load audio' : undefined}
+                      className="px-4 py-1.5 text-sm font-medium bg-primary-600 hover:bg-primary-700 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                    >
+                      {isLoadingAudio ? <Loader className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
+                      {isLoadingAudio ? `Loading… ${loadAudioProgress}%` : 'Load from Device'}
+                    </button>
+                  )}
                 </div>
                 {isLoadingAudio && (
                   <div className="w-full bg-gray-200 dark:bg-gray-600 rounded-full h-1.5 overflow-hidden">

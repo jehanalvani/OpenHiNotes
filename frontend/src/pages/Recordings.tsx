@@ -4,12 +4,13 @@ import { useDeviceConnection } from '@/hooks/useDeviceConnection';
 import { useAppStore } from '@/store/useAppStore';
 import { TranscribeModal } from '@/components/TranscribeModal';
 import { AudioPlayer } from '@/components/AudioPlayer';
-import { Collection } from '@/types';
+import { Collection, Transcription } from '@/types';
 import { deviceService } from '@/services/deviceService';
 import { transcriptionsApi } from '@/api/transcriptions';
 import { collectionsApi } from '@/api/collections';
-import { Play, Download, Trash2, Zap, FileText, AlertCircle, Pencil, X, CheckCircle, FolderOpen, TriangleAlert } from 'lucide-react';
+import { Play, Download, Trash2, Zap, FileText, AlertCircle, Pencil, X, CheckCircle, FolderOpen, TriangleAlert, Server, ServerOff } from 'lucide-react';
 import { format } from 'date-fns';
+import { settingsApi } from '@/api/settings';
 
 /* ── Delete confirmation modal ────────────────────────────────────── */
 interface DeleteModalProps {
@@ -17,12 +18,15 @@ interface DeleteModalProps {
   recordingName: string;
   /** Whether a linked transcript exists */
   hasTranscript: boolean;
-  onConfirm: (deleteTranscript: boolean) => void;
+  /** Whether audio is kept server-side */
+  hasServerAudio: boolean;
+  onConfirm: (deleteTranscript: boolean, deleteServerAudio: boolean) => void;
   onCancel: () => void;
 }
 
-function DeleteRecordingModal({ recordingName, hasTranscript, onConfirm, onCancel }: DeleteModalProps) {
+function DeleteRecordingModal({ recordingName, hasTranscript, hasServerAudio, onConfirm, onCancel }: DeleteModalProps) {
   const [alsoDeleteTranscript, setAlsoDeleteTranscript] = useState(false);
+  const [alsoDeleteServerAudio, setAlsoDeleteServerAudio] = useState(false);
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={onCancel}>
@@ -38,30 +42,51 @@ function DeleteRecordingModal({ recordingName, hasTranscript, onConfirm, onCance
             <h3 className="text-lg font-bold text-gray-900 dark:text-white">Delete Recording</h3>
             <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
               Are you sure you want to delete{' '}
-              <span className="font-medium text-gray-700 dark:text-gray-300">"{recordingName}"</span>?
-              This action cannot be undone.
+              <span className="font-medium text-gray-700 dark:text-gray-300">"{recordingName}"</span>{' '}
+              from the device? This action cannot be undone.
             </p>
           </div>
         </div>
 
-        {hasTranscript && (
-          <label className="flex items-start gap-3 p-3 mb-4 bg-amber-50 dark:bg-amber-900/15 border border-amber-200 dark:border-amber-800 rounded-lg cursor-pointer hover:bg-amber-100/60 dark:hover:bg-amber-900/25 transition-colors">
-            <input
-              type="checkbox"
-              checked={alsoDeleteTranscript}
-              onChange={(e) => setAlsoDeleteTranscript(e.target.checked)}
-              className="w-4 h-4 mt-0.5 rounded border-gray-300 text-red-600 focus:ring-2 focus:ring-red-500"
-            />
-            <div>
-              <span className="text-sm font-medium text-amber-800 dark:text-amber-300">
-                Also delete associated transcription
-              </span>
-              <p className="text-xs text-amber-600 dark:text-amber-400 mt-0.5">
-                This recording has a linked transcription. Check this box to delete it as well.
-              </p>
-            </div>
-          </label>
-        )}
+        <div className="space-y-3 mb-4">
+          {hasServerAudio && (
+            <label className="flex items-start gap-3 p-3 bg-blue-50 dark:bg-blue-900/15 border border-blue-200 dark:border-blue-800 rounded-lg cursor-pointer hover:bg-blue-100/60 dark:hover:bg-blue-900/25 transition-colors">
+              <input
+                type="checkbox"
+                checked={alsoDeleteServerAudio}
+                onChange={(e) => setAlsoDeleteServerAudio(e.target.checked)}
+                className="w-4 h-4 mt-0.5 rounded border-gray-300 text-red-600 focus:ring-2 focus:ring-red-500"
+              />
+              <div>
+                <span className="text-sm font-medium text-blue-800 dark:text-blue-300">
+                  Also delete audio from server
+                </span>
+                <p className="text-xs text-blue-600 dark:text-blue-400 mt-0.5">
+                  Audio is saved on your server. Uncheck to keep it accessible from the transcript.
+                </p>
+              </div>
+            </label>
+          )}
+
+          {hasTranscript && (
+            <label className="flex items-start gap-3 p-3 bg-amber-50 dark:bg-amber-900/15 border border-amber-200 dark:border-amber-800 rounded-lg cursor-pointer hover:bg-amber-100/60 dark:hover:bg-amber-900/25 transition-colors">
+              <input
+                type="checkbox"
+                checked={alsoDeleteTranscript}
+                onChange={(e) => setAlsoDeleteTranscript(e.target.checked)}
+                className="w-4 h-4 mt-0.5 rounded border-gray-300 text-red-600 focus:ring-2 focus:ring-red-500"
+              />
+              <div>
+                <span className="text-sm font-medium text-amber-800 dark:text-amber-300">
+                  Also delete associated transcription
+                </span>
+                <p className="text-xs text-amber-600 dark:text-amber-400 mt-0.5">
+                  This recording has a linked transcription. Check this box to delete it as well.
+                </p>
+              </div>
+            </label>
+          )}
+        </div>
 
         <div className="flex gap-3">
           <button
@@ -71,7 +96,7 @@ function DeleteRecordingModal({ recordingName, hasTranscript, onConfirm, onCance
             Cancel
           </button>
           <button
-            onClick={() => onConfirm(alsoDeleteTranscript)}
+            onClick={() => onConfirm(alsoDeleteTranscript, alsoDeleteServerAudio)}
             className="flex-1 px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium transition-colors flex items-center justify-center gap-2"
           >
             <Trash2 className="w-4 h-4" />
@@ -178,11 +203,15 @@ export function Recordings() {
   const [editingAlias, setEditingAlias] = useState<string | null>(null);
   const [aliasInput, setAliasInput] = useState('');
   const aliasInputRef = useRef<HTMLInputElement>(null);
-  const [transcriptMap, setTranscriptMap] = useState<Record<string, { id: string; status: string; title: string | null }>>({});
+  const [transcriptMap, setTranscriptMap] = useState<Record<string, { id: string; status: string; title: string | null; keep_audio: boolean; audio_available: boolean }>>({});
+  const [keepAudioEnabled, setKeepAudioEnabled] = useState(true);
 
   // Collections for batch assign
   const [collections, setCollections] = useState<Collection[]>([]);
   const [showCollectionPicker, setShowCollectionPicker] = useState(false);
+
+  // Server-only recordings (audio available but not on device)
+  const [serverOnlyRecordings, setServerOnlyRecordings] = useState<Transcription[]>([]);
 
   // Delete modals
   const [deleteModalFile, setDeleteModalFile] = useState<string | null>(null);
@@ -252,6 +281,26 @@ export function Recordings() {
     collectionsApi.list().then(setCollections).catch(console.error);
   }, []);
 
+  // Load keep_audio admin setting
+  useEffect(() => {
+    settingsApi.getAudioSettings()
+      .then((s) => setKeepAudioEnabled(s.keep_audio_enabled))
+      .catch(console.error);
+  }, []);
+
+  // Load server-only recordings (audio on server but not on device)
+  useEffect(() => {
+    transcriptionsApi.getTranscriptions(0, 100, 'newest', 'mine')
+      .then((res) => {
+        const deviceFileNames = new Set(recordings.map((r) => r.fileName));
+        const serverOnly = res.items.filter(
+          (t) => t.audio_available && !deviceFileNames.has(t.original_filename)
+        );
+        setServerOnlyRecordings(serverOnly);
+      })
+      .catch(console.error);
+  }, [recordings]);
+
   const getOrDownloadBlob = async (
     recordingId: string, fileName: string, fileSize: number, fileVersion?: number
   ): Promise<Blob | null> => {
@@ -290,20 +339,36 @@ export function Recordings() {
     setDeleteModalFile(fileName);
   };
 
-  const confirmDeleteRecording = async (fileName: string, deleteTranscript: boolean) => {
+  const confirmDeleteRecording = async (fileName: string, deleteTranscript: boolean, deleteServerAudio: boolean) => {
     setDeleteModalFile(null);
     await deleteRecording(fileName);
 
-    if (deleteTranscript && transcriptMap[fileName]) {
-      try {
-        await transcriptionsApi.deleteTranscription(transcriptMap[fileName].id);
-        setTranscriptMap((prev) => {
-          const next = { ...prev };
-          delete next[fileName];
-          return next;
-        });
-      } catch (err) {
-        console.error('Failed to delete transcript:', err);
+    const transcript = transcriptMap[fileName];
+    if (transcript) {
+      // Turn off keep_audio (deletes server file) if requested
+      if (deleteServerAudio && transcript.keep_audio && transcript.audio_available) {
+        try {
+          await transcriptionsApi.toggleKeepAudio(transcript.id, false);
+          setTranscriptMap((prev) => ({
+            ...prev,
+            [fileName]: { ...prev[fileName], keep_audio: false, audio_available: false },
+          }));
+        } catch (err) {
+          console.error('Failed to delete server audio:', err);
+        }
+      }
+
+      if (deleteTranscript) {
+        try {
+          await transcriptionsApi.deleteTranscription(transcript.id);
+          setTranscriptMap((prev) => {
+            const next = { ...prev };
+            delete next[fileName];
+            return next;
+          });
+        } catch (err) {
+          console.error('Failed to delete transcript:', err);
+        }
       }
     }
   };
@@ -329,6 +394,24 @@ export function Recordings() {
 
     clearSelectedRecordings();
     await refreshRecordings();
+  };
+
+  const handleToggleKeepAudio = async (fileName: string, keepAudio: boolean) => {
+    const transcript = transcriptMap[fileName];
+    if (!transcript) return;
+    try {
+      await transcriptionsApi.toggleKeepAudio(transcript.id, keepAudio);
+      setTranscriptMap((prev) => ({
+        ...prev,
+        [fileName]: {
+          ...prev[fileName],
+          keep_audio: keepAudio,
+          audio_available: keepAudio ? prev[fileName].audio_available : false,
+        },
+      }));
+    } catch (err) {
+      console.error('Failed to toggle keep audio:', err);
+    }
   };
 
   const handleBatchAddToCollection = async (collectionId: string) => {
@@ -570,7 +653,7 @@ export function Recordings() {
                     Date
                   </th>
                   <th className="px-6 py-3 text-center text-xs font-medium text-gray-700 dark:text-gray-300 uppercase tracking-wider">
-                    Transcript
+                    Status
                   </th>
                   <th className="px-6 py-3 text-right text-xs font-medium text-gray-700 dark:text-gray-300 uppercase tracking-wider">
                     Actions
@@ -641,25 +724,59 @@ export function Recordings() {
                         {format(recording.dateCreated, 'MMM d, yyyy HH:mm')}
                       </td>
                       <td className="px-6 py-4 text-center">
-                        {transcriptMap[recording.fileName] ? (
-                          <span
-                            className={`inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full ${
-                              transcriptMap[recording.fileName].status === 'completed'
-                                ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
-                                : transcriptMap[recording.fileName].status === 'processing'
-                                ? 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400'
-                                : transcriptMap[recording.fileName].status === 'failed'
-                                ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400'
-                                : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400'
-                            }`}
-                            title={transcriptMap[recording.fileName].title || transcriptMap[recording.fileName].status}
-                          >
-                            <CheckCircle className="w-3 h-3" />
-                            {transcriptMap[recording.fileName].status === 'completed' ? 'Yes' : transcriptMap[recording.fileName].status}
-                          </span>
-                        ) : (
-                          <span className="text-xs text-gray-400 dark:text-gray-500">—</span>
-                        )}
+                        <div className="flex flex-col items-center gap-1">
+                          {transcriptMap[recording.fileName] ? (
+                            <>
+                              <span
+                                className={`inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full ${
+                                  transcriptMap[recording.fileName].status === 'completed'
+                                    ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
+                                    : transcriptMap[recording.fileName].status === 'processing'
+                                    ? 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400'
+                                    : transcriptMap[recording.fileName].status === 'failed'
+                                    ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400'
+                                    : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400'
+                                }`}
+                                title={transcriptMap[recording.fileName].title || transcriptMap[recording.fileName].status}
+                              >
+                                <CheckCircle className="w-3 h-3" />
+                                {transcriptMap[recording.fileName].status === 'completed' ? 'Transcribed' : transcriptMap[recording.fileName].status}
+                              </span>
+                              {transcriptMap[recording.fileName].status === 'completed' && keepAudioEnabled && (
+                                <button
+                                  onClick={() => handleToggleKeepAudio(
+                                    recording.fileName,
+                                    !transcriptMap[recording.fileName].keep_audio
+                                  )}
+                                  className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full transition-colors ${
+                                    transcriptMap[recording.fileName].keep_audio
+                                      ? transcriptMap[recording.fileName].audio_available
+                                        ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 hover:bg-blue-200 dark:hover:bg-blue-900/50'
+                                        : 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600'
+                                      : 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600'
+                                  }`}
+                                  title={
+                                    transcriptMap[recording.fileName].keep_audio
+                                      ? transcriptMap[recording.fileName].audio_available
+                                        ? 'Audio saved on server — click to remove'
+                                        : 'Audio saving enabled (not yet available)'
+                                      : 'Click to save audio on server'
+                                  }
+                                >
+                                  {transcriptMap[recording.fileName].keep_audio && transcriptMap[recording.fileName].audio_available ? (
+                                    <><Server className="w-3 h-3" /> On server</>
+                                  ) : transcriptMap[recording.fileName].keep_audio ? (
+                                    <><Server className="w-3 h-3" /> Saving...</>
+                                  ) : (
+                                    <><ServerOff className="w-3 h-3" /> Not saved</>
+                                  )}
+                                </button>
+                              )}
+                            </>
+                          ) : (
+                            <span className="text-xs text-gray-400 dark:text-gray-500">—</span>
+                          )}
+                        </div>
                       </td>
                       <td className="px-6 py-4 text-right">
                         <div className="flex items-center justify-end gap-2">
@@ -709,6 +826,120 @@ export function Recordings() {
         )}
       </div>
 
+      {/* Server-only recordings (not on device but audio available) */}
+      {serverOnlyRecordings.length > 0 && (
+        <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden mt-6">
+          <div className="p-6 border-b border-gray-200 dark:border-gray-700">
+            <div className="flex items-center gap-2">
+              <Server className="w-5 h-5 text-blue-500" />
+              <h2 className="text-lg font-bold text-gray-900 dark:text-white">Server-Only Audio</h2>
+              <span className="text-sm text-gray-500 dark:text-gray-400">
+                ({serverOnlyRecordings.length} recording{serverOnlyRecordings.length !== 1 ? 's' : ''} not on device)
+              </span>
+            </div>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-gray-50 dark:bg-gray-700">
+                <tr>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 dark:text-gray-300 uppercase tracking-wider">
+                    Name
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 dark:text-gray-300 uppercase tracking-wider">
+                    Duration
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 dark:text-gray-300 uppercase tracking-wider">
+                    Date
+                  </th>
+                  <th className="px-6 py-3 text-center text-xs font-medium text-gray-700 dark:text-gray-300 uppercase tracking-wider">
+                    Audio
+                  </th>
+                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-700 dark:text-gray-300 uppercase tracking-wider">
+                    Actions
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+                {serverOnlyRecordings.map((t) => (
+                  <tr key={t.id} className="hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                    <td className="px-6 py-4 text-sm">
+                      <div className="min-w-0">
+                        <span className="font-medium text-gray-900 dark:text-white block truncate">
+                          {t.title || t.original_filename}
+                        </span>
+                        {t.title && (
+                          <span className="text-xs text-gray-400 dark:text-gray-500 block truncate">
+                            {t.original_filename}
+                          </span>
+                        )}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 text-sm text-gray-500 dark:text-gray-400">
+                      {t.audio_duration
+                        ? t.audio_duration >= 60
+                          ? `${Math.floor(t.audio_duration / 60)}m ${Math.round(t.audio_duration % 60)}s`
+                          : `${Math.round(t.audio_duration)}s`
+                        : '—'}
+                    </td>
+                    <td className="px-6 py-4 text-sm text-gray-500 dark:text-gray-400">
+                      {format(new Date(t.created_at), 'MMM d, yyyy HH:mm')}
+                    </td>
+                    <td className="px-6 py-4 text-center">
+                      <span className="inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400">
+                        <Server className="w-3 h-3" />
+                        On server only
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 text-right">
+                      <div className="flex items-center justify-end gap-2">
+                        <button
+                          onClick={async () => {
+                            try {
+                              const blobUrl = await transcriptionsApi.getAudioBlobUrl(t.id);
+                              const blob = await fetch(blobUrl).then((r) => r.blob());
+                              setPlayingFile({ blob, name: t.original_filename });
+                            } catch (err) {
+                              console.error('Failed to load audio:', err);
+                            }
+                          }}
+                          className="p-2 hover:bg-gray-100 dark:hover:bg-gray-600 rounded text-gray-600 dark:text-gray-400"
+                          title="Play from server"
+                        >
+                          <Play className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => window.open(`/transcriptions/${t.id}`, '_self')}
+                          className="p-2 hover:bg-gray-100 dark:hover:bg-gray-600 rounded text-gray-600 dark:text-gray-400"
+                          title="View transcript"
+                        >
+                          <FileText className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={async () => {
+                            if (window.confirm('Remove server audio? The transcription will be kept.')) {
+                              try {
+                                await transcriptionsApi.toggleKeepAudio(t.id, false);
+                                setServerOnlyRecordings((prev) => prev.filter((r) => r.id !== t.id));
+                              } catch (err) {
+                                console.error('Failed to remove audio:', err);
+                              }
+                            }
+                          }}
+                          className="p-2 hover:bg-red-100 dark:hover:bg-red-900 rounded text-red-600 dark:text-red-400"
+                          title="Remove server audio"
+                        >
+                          <ServerOff className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
       <TranscribeModal
         isOpen={transcribeModal}
         onClose={() => {
@@ -730,7 +961,8 @@ export function Recordings() {
         <DeleteRecordingModal
           recordingName={recordingAliases[deleteModalFile] || deleteModalFile}
           hasTranscript={!!transcriptMap[deleteModalFile]}
-          onConfirm={(deleteTranscript) => confirmDeleteRecording(deleteModalFile, deleteTranscript)}
+          hasServerAudio={!!(transcriptMap[deleteModalFile]?.keep_audio && transcriptMap[deleteModalFile]?.audio_available)}
+          onConfirm={(deleteTranscript, deleteServerAudio) => confirmDeleteRecording(deleteModalFile, deleteTranscript, deleteServerAudio)}
           onCancel={() => setDeleteModalFile(null)}
         />
       )}

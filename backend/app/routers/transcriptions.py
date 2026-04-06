@@ -1,7 +1,9 @@
 import asyncio
 import json
+import os
 import re
 import uuid
+from pathlib import Path
 
 from fastapi import (
     APIRouter,
@@ -12,7 +14,7 @@ from fastapi import (
     File,
     Query,
 )
-from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from app.database import get_db
@@ -28,7 +30,7 @@ from app.schemas.transcription import (
     TranscriptFindReplace,
 )
 from app.models.user import User, UserRole
-from app.models.transcription import Transcription
+from app.models.transcription import Transcription, TranscriptionStatus
 from app.models.summary import Summary
 from app.models.template import SummaryTemplate
 from app.models.resource_share import ResourceType
@@ -377,6 +379,8 @@ async def check_transcriptions_by_filenames(
         Transcription.id,
         Transcription.status,
         Transcription.title,
+        Transcription.keep_audio,
+        Transcription.audio_available,
     ).where(Transcription.original_filename.in_(filename_list))
 
     if current_user.role != UserRole.admin:
@@ -389,7 +393,7 @@ async def check_transcriptions_by_filenames(
     result = await db.execute(query)
     rows = result.all()
 
-    # Build mapping: filename -> {id, status, title}
+    # Build mapping: filename -> {id, status, title, keep_audio, audio_available}
     mapping: dict = {}
     for row in rows:
         fname = row[0]
@@ -399,9 +403,317 @@ async def check_transcriptions_by_filenames(
                 "id": str(row[1]),
                 "status": row[2],
                 "title": row[3],
+                "keep_audio": row[4],
+                "audio_available": row[5],
             }
 
     return mapping
+
+
+@router.post("/queue", response_model=TranscriptionResponse, status_code=status.HTTP_202_ACCEPTED)
+async def queue_transcription(
+    file: UploadFile = File(...),
+    language: str = Query(None),
+    keep_audio: bool = Query(False),
+    auto_summarize: bool = Query(False),
+    template_id: uuid.UUID = Query(None),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Upload audio file and add transcription to the background queue.
+    Returns immediately with the transcription ID and queue position."""
+    # Enforce admin keep_audio setting
+    if keep_audio:
+        from app.models.app_settings import AppSetting
+        ka_result = await db.execute(
+            select(AppSetting).where(AppSetting.key == "keep_audio_enabled")
+        )
+        ka_setting = ka_result.scalars().first()
+        if ka_setting and ka_setting.value.lower() != "true":
+            keep_audio = False  # silently override if admin disabled
+
+    if language and language.lower() == "auto":
+        language = None
+
+    if not file.filename:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No file provided")
+
+    try:
+        stored_filename, original_filename = await TranscriptionService.save_uploaded_file(
+            file, current_user.id
+        )
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Failed to save file: {str(e)}")
+
+    # Create transcription record with pending status
+    transcription = Transcription(
+        user_id=current_user.id,
+        filename=stored_filename,
+        original_filename=original_filename,
+        language=language,
+        status=TranscriptionStatus.pending,
+        keep_audio=keep_audio,
+        audio_available=True,
+    )
+    db.add(transcription)
+    await db.commit()
+    await db.refresh(transcription)
+
+    # Enqueue it
+    from app.services.queue import transcription_queue
+    queue_position = await transcription_queue.enqueue(transcription.id)
+
+    # Re-fetch to get updated fields
+    await db.refresh(transcription)
+
+    return TranscriptionResponse.model_validate(transcription)
+
+
+@router.get("/queue/status")
+async def get_queue_status(
+    current_user: User = Depends(get_current_user),
+):
+    """Get the current queue status (all items being processed/waiting)."""
+    from app.services.queue import transcription_queue
+    status_data = await transcription_queue.get_queue_status()
+
+    return {
+        "queue": [TranscriptionResponse.model_validate(t) for t in status_data["queue"]],
+        "total_in_queue": status_data["total_in_queue"],
+        "currently_processing": (
+            TranscriptionResponse.model_validate(status_data["currently_processing"])
+            if status_data["currently_processing"] else None
+        ),
+    }
+
+
+@router.get("/queue/my")
+async def get_my_queue_items(
+    current_user: User = Depends(get_current_user),
+):
+    """Get the current user's queued/processing transcriptions."""
+    from app.services.queue import transcription_queue
+    items = await transcription_queue.get_user_queue_items(current_user.id)
+    return [TranscriptionResponse.model_validate(t) for t in items]
+
+
+@router.get("/queue/stream/{transcription_id}")
+async def stream_queue_status(
+    transcription_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """SSE stream for real-time status updates of a queued transcription."""
+    # Verify user owns or has access to this transcription
+    transcription = await TranscriptionService.get_transcription(db, transcription_id)
+    if not transcription:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Transcription not found")
+
+    has_access = await PermissionService.check_access(
+        db, current_user, ResourceType.transcription, transcription_id, "read"
+    )
+    if not has_access:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized")
+
+    from app.services.queue import transcription_queue
+
+    # If already completed or failed, return immediately
+    if transcription.status in (TranscriptionStatus.completed, TranscriptionStatus.failed):
+        async def immediate_response():
+            data = json.dumps({
+                "event": str(transcription.status.value),
+                "status": str(transcription.status.value),
+                "progress": transcription.progress or (100 if transcription.status == TranscriptionStatus.completed else 0),
+                "stage": transcription.progress_stage,
+            })
+            yield f"data: {data}\n\n"
+
+        return StreamingResponse(
+            immediate_response(),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "Connection": "keep-alive", "X-Accel-Buffering": "no"},
+        )
+
+    # Subscribe to updates
+    sub_queue = transcription_queue.subscribe(transcription_id)
+
+    async def event_generator():
+        try:
+            # Send current state first
+            data = json.dumps({
+                "event": "status",
+                "status": str(transcription.status.value),
+                "progress": transcription.progress or 0,
+                "stage": transcription.progress_stage,
+                "queue_position": transcription.queue_position,
+            })
+            yield f"data: {data}\n\n"
+
+            while True:
+                try:
+                    msg = await asyncio.wait_for(sub_queue.get(), timeout=15.0)
+                    data = json.dumps(msg)
+                    yield f"data: {data}\n\n"
+
+                    # Stop streaming after terminal events
+                    if msg.get("event") in ("completed", "failed", "cancelled"):
+                        break
+                except asyncio.TimeoutError:
+                    yield ": keep-alive\n\n"
+        finally:
+            transcription_queue.unsubscribe(transcription_id, sub_queue)
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "Connection": "keep-alive", "X-Accel-Buffering": "no"},
+    )
+
+
+@router.post("/queue/cancel/{transcription_id}")
+async def cancel_queued_transcription(
+    transcription_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+):
+    """Cancel a queued or processing transcription. Users can only cancel their own jobs."""
+    from app.services.queue import transcription_queue
+    success = await transcription_queue.cancel(transcription_id, current_user.id)
+    if not success:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot cancel this transcription. It may not exist, not be yours, or already be finished."
+        )
+    return {"status": "cancelled", "transcription_id": str(transcription_id)}
+
+
+@router.get("/queue/voxhub-info")
+async def get_voxhub_queue_info(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get VoxHub server queue info (how many jobs are pending/processing).
+    Also returns the user's current VoxHub job position if they have one."""
+    from app.services.transcription import TranscriptionService
+
+    voxhub_info = await TranscriptionService.get_voxhub_queue_info(db)
+
+    # Find this user's active transcriptions to calculate their position
+    result = await db.execute(
+        select(Transcription).where(
+            Transcription.user_id == current_user.id,
+            Transcription.status.in_([TranscriptionStatus.queued, TranscriptionStatus.processing]),
+        )
+    )
+    user_transcriptions = result.scalars().all()
+
+    user_job_ids = {t.voxhub_job_id for t in user_transcriptions if t.voxhub_job_id}
+
+    # Calculate jobs ahead of user's first job
+    jobs_ahead = 0
+    voxhub_jobs = voxhub_info.get("jobs", [])
+    if user_job_ids and voxhub_jobs:
+        # Jobs are sorted newest-first; find the user's job and count pending/processing before it
+        for job in reversed(voxhub_jobs):
+            if job.get("id") in user_job_ids:
+                break
+            if job.get("status") in ("pending", "processing"):
+                jobs_ahead += 1
+
+    counts = voxhub_info.get("counts", {})
+    return {
+        "pending": counts.get("pending", 0),
+        "processing": counts.get("processing", 0),
+        "total": voxhub_info.get("total", 0),
+        "jobs_ahead": jobs_ahead,
+    }
+
+
+@router.get("/audio/{transcription_id}")
+async def get_transcription_audio(
+    transcription_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Serve the audio file for a transcription (if kept and available)."""
+    transcription = await TranscriptionService.get_transcription(db, transcription_id)
+    if not transcription:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Transcription not found")
+
+    has_access = await PermissionService.check_access(
+        db, current_user, ResourceType.transcription, transcription_id, "read"
+    )
+    if not has_access:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized")
+
+    if not transcription.audio_available:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Audio file not available")
+
+    file_path = Path(settings.uploads_directory) / str(transcription.user_id) / transcription.filename
+    if not file_path.exists():
+        # Mark as unavailable in DB
+        transcription.audio_available = False
+        await db.commit()
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Audio file not found on disk")
+
+    # Determine media type from extension
+    ext = file_path.suffix.lower()
+    media_types = {
+        ".mp3": "audio/mpeg", ".wav": "audio/wav", ".m4a": "audio/mp4",
+        ".ogg": "audio/ogg", ".flac": "audio/flac", ".webm": "audio/webm",
+        ".hda": "application/octet-stream",
+    }
+    media_type = media_types.get(ext, "application/octet-stream")
+
+    return FileResponse(
+        path=str(file_path),
+        media_type=media_type,
+        filename=transcription.original_filename,
+    )
+
+
+@router.patch("/keep-audio/{transcription_id}", response_model=TranscriptionResponse)
+async def toggle_keep_audio(
+    transcription_id: uuid.UUID,
+    keep_audio: bool = Query(...),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Toggle the keep_audio flag for a transcription. If turning off, deletes the audio file."""
+    # Enforce admin keep_audio setting when enabling
+    if keep_audio:
+        from app.models.app_settings import AppSetting
+        ka_result = await db.execute(
+            select(AppSetting).where(AppSetting.key == "keep_audio_enabled")
+        )
+        ka_setting = ka_result.scalars().first()
+        if ka_setting and ka_setting.value.lower() != "true":
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Keeping audio is disabled by administrator"
+            )
+
+    transcription = await TranscriptionService.get_transcription(db, transcription_id)
+    if not transcription:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Transcription not found")
+
+    has_access = await PermissionService.check_access(
+        db, current_user, ResourceType.transcription, transcription_id, "write"
+    )
+    if not has_access:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized")
+
+    transcription.keep_audio = keep_audio
+
+    # If turning off keep_audio on a completed transcription, delete the file
+    if not keep_audio and transcription.status == TranscriptionStatus.completed:
+        file_path = Path(settings.uploads_directory) / str(transcription.user_id) / transcription.filename
+        if file_path.exists():
+            os.remove(str(file_path))
+        transcription.audio_available = False
+
+    await db.commit()
+    await db.refresh(transcription)
+    return transcription
 
 
 @router.get("/{transcription_id}", response_model=TranscriptionResponse)

@@ -29,7 +29,7 @@ export interface RegistrationSettings {
   allowed_domains: string[];
 }
 
-export type TranscriptionStatus = 'pending' | 'processing' | 'completed' | 'failed';
+export type TranscriptionStatus = 'pending' | 'queued' | 'processing' | 'completed' | 'failed' | 'cancelled';
 
 export interface TranscriptionSegment {
   start: number;
@@ -68,6 +68,14 @@ export interface Transcription {
   status: TranscriptionStatus;
   error_message: string | null;
   notes: string | null;
+  queue_position: number | null;
+  progress: number | null;
+  progress_stage: string | null;
+  queued_at: string | null;
+  started_at: string | null;
+  completed_at: string | null;
+  keep_audio: boolean;
+  audio_available: boolean;
   created_at: string;
   updated_at: string;
   permission_level?: PermissionLevel | null;
@@ -177,4 +185,19 @@ export interface PaginatedResponse<T> {
   total: number;
   skip: number;
   limit: number;
+}
+
+export interface QueueStatus {
+  queue: Transcription[];
+  total_in_queue: number;
+  currently_processing: Transcription | null;
+}
+
+export interface QueueSSEEvent {
+  event: 'queued' | 'position_update' | 'processing_started' | 'progress' | 'completed' | 'failed' | 'cancelled' | 'status';
+  status?: string;
+  progress?: number;
+  stage?: string | null;
+  queue_position?: number;
+  error?: string;
 }

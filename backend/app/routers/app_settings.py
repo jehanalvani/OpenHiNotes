@@ -158,6 +158,55 @@ async def update_registration_settings(
     return await RegistrationSettingsService.get_all(db)
 
 
+# ── Audio / Keep-Audio Settings ───────────────────────────────────────
+
+KEEP_AUDIO_SETTING_KEY = "keep_audio_enabled"
+
+
+class KeepAudioSettingsUpdate(BaseModel):
+    keep_audio_enabled: bool
+
+
+@router.get("/audio")
+async def get_audio_settings(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get audio-related settings. Available to all authenticated users."""
+    result = await db.execute(
+        select(AppSetting).where(AppSetting.key == KEEP_AUDIO_SETTING_KEY)
+    )
+    setting = result.scalars().first()
+    keep_audio_enabled = setting.value.lower() == "true" if setting else True  # default: enabled
+    return {"keep_audio_enabled": keep_audio_enabled}
+
+
+@router.put("/audio")
+async def update_audio_settings(
+    body: KeepAudioSettingsUpdate,
+    current_user: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Update audio settings (admin only)."""
+    result = await db.execute(
+        select(AppSetting).where(AppSetting.key == KEEP_AUDIO_SETTING_KEY)
+    )
+    setting = result.scalars().first()
+
+    if setting:
+        setting.value = str(body.keep_audio_enabled).lower()
+    else:
+        setting = AppSetting(
+            key=KEEP_AUDIO_SETTING_KEY,
+            value=str(body.keep_audio_enabled).lower(),
+            description="Allow users to keep audio files with their transcriptions",
+        )
+        db.add(setting)
+
+    await db.commit()
+    return {"keep_audio_enabled": body.keep_audio_enabled}
+
+
 # ── Generic key/value settings ─────────────────────────────────────────
 
 

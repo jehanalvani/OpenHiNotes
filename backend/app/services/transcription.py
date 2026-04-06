@@ -1,10 +1,11 @@
 import asyncio
 import httpx
+import inspect
 import json
 import logging
 import uuid
 from pathlib import Path
-from typing import Optional, Dict, Any, AsyncGenerator, Callable
+from typing import Optional, Dict, Any, AsyncGenerator, Callable, Union
 from fastapi import UploadFile
 from app.config import settings
 from app.models.transcription import Transcription, TranscriptionStatus
@@ -13,6 +14,15 @@ from sqlalchemy import select
 import os
 
 logger = logging.getLogger(__name__)
+
+
+async def _call_progress(on_progress, *args):
+    """Call a progress callback, awaiting it if it's async."""
+    if on_progress is None:
+        return
+    result = on_progress(*args)
+    if inspect.isawaitable(result):
+        await result
 
 
 class TranscriptionService:
@@ -71,19 +81,24 @@ class TranscriptionService:
         language: Optional[str] = None,
         db: Optional[AsyncSession] = None,
         on_progress: Optional[Callable[[str, float, Optional[str]], None]] = None,
+        on_job_submitted: Optional[Callable[[str], Any]] = None,
     ) -> Dict[str, Any]:
         """Call VoxHub/WhisperX API to transcribe audio file.
 
         Supports two modes:
         - Normal (synchronous): POST /v1/audio/transcriptions
         - Job (asynchronous): POST /v1/audio/transcriptions/jobs → poll → fetch result
+
+        Args:
+            on_job_submitted: optional callback(job_id) called after job is submitted in job mode.
         """
         cfg = await TranscriptionService._resolve_transcription_settings(db)
         headers = TranscriptionService._build_auth_headers(cfg["api_key"])
 
         if cfg["job_mode"]:
             return await TranscriptionService._transcribe_job_mode(
-                file_path, language, cfg, headers, on_progress=on_progress
+                file_path, language, cfg, headers,
+                on_progress=on_progress, on_job_submitted=on_job_submitted,
             )
         else:
             return await TranscriptionService._transcribe_normal_mode(file_path, language, cfg, headers)
@@ -125,11 +140,13 @@ class TranscriptionService:
         cfg: Dict[str, Any],
         headers: Dict[str, str],
         on_progress: Optional[Callable[[str, float, Optional[str]], None]] = None,
+        on_job_submitted: Optional[Callable[[str], Any]] = None,
     ) -> Dict[str, Any]:
         """Async VoxHub Job Mode — submit, poll, fetch result.
 
         Args:
             on_progress: optional callback(status, progress_percent) called on each poll.
+            on_job_submitted: optional callback(job_id) called after job is submitted.
         """
         base = cfg["api_url"]
 
@@ -137,8 +154,7 @@ class TranscriptionService:
         submit_url = f"{base}/v1/audio/transcriptions/jobs"
         logger.info("VoxHub Job Mode: submitting job to %s", submit_url)
 
-        if on_progress:
-            on_progress("uploading", 0, "loading")
+        await _call_progress(on_progress, "uploading", 0, "uploading")
 
         with open(file_path, "rb") as f:
             files = {"file": (Path(file_path).name, f, "audio/mpeg")}
@@ -164,20 +180,27 @@ class TranscriptionService:
 
         logger.info("VoxHub Job Mode: job submitted, id=%s", job_id)
 
-        if on_progress:
-            on_progress("processing", 0, "loading")
+        # Notify caller of job_id so it can be stored for cancellation
+        if on_job_submitted:
+            await _call_progress(on_job_submitted, job_id)
+
+        await _call_progress(on_progress, "processing", 0, "waiting")
 
         # Step 2: Poll for completion
+        # Timeout resets whenever status or progress changes, so long-running
+        # transcriptions won't be killed as long as VoxHub is making progress.
         poll_url = f"{base}/v1/audio/transcriptions/jobs/{job_id}"
-        max_wait = 600  # 10 minutes max
-        elapsed = 0
+        stale_timeout = 300  # 5 minutes without any change = stale
         poll_interval = 3
         status = "unknown"
+        last_progress = -1.0
+        last_stage = None
+        seconds_since_change = 0
 
         async with httpx.AsyncClient(timeout=30.0, verify=settings.voxhub_ssl_verify) as client:
-            while elapsed < max_wait:
+            while seconds_since_change < stale_timeout:
                 await asyncio.sleep(poll_interval)
-                elapsed += poll_interval
+                seconds_since_change += poll_interval
 
                 poll_resp = await client.get(poll_url, headers=headers)
                 if poll_resp.status_code != 200:
@@ -189,18 +212,25 @@ class TranscriptionService:
                 stage = status_data.get("stage", None)
                 logger.info("VoxHub Job %s: status=%s, progress=%.1f%%, stage=%s", job_id, status, progress, stage)
 
-                if on_progress:
-                    on_progress(status, progress, stage)
+                await _call_progress(on_progress, status, progress, stage)
+
+                # Reset stale timer on any change
+                if progress != last_progress or stage != last_stage or status != "processing":
+                    seconds_since_change = 0
+                    last_progress = progress
+                    last_stage = stage
 
                 if status == "completed":
                     break
                 elif status == "failed":
                     error_msg = status_data.get("error", "Job failed without error details")
                     raise Exception(f"VoxHub job failed: {error_msg}")
+                elif status == "cancelled":
+                    raise Exception("VoxHub job was cancelled")
                 # Keep polling for "processing", "queued", etc.
 
         if status != "completed":
-            raise Exception(f"VoxHub job timed out after {max_wait}s (status={status})")
+            raise Exception(f"VoxHub job timed out (no progress for {stale_timeout}s, status={status})")
 
         # Step 3: Fetch result with verbose_json to get segments & speaker labels
         result_url = f"{base}/v1/audio/transcriptions/jobs/{job_id}/result"
@@ -216,6 +246,44 @@ class TranscriptionService:
 
         logger.info("VoxHub Job %s: result fetched successfully", job_id)
         return result_resp.json()
+
+    @staticmethod
+    async def cancel_voxhub_job(job_id: str, db: Optional[AsyncSession] = None) -> bool:
+        """Cancel a VoxHub job. Returns True if successfully cancelled."""
+        cfg = await TranscriptionService._resolve_transcription_settings(db)
+        headers = TranscriptionService._build_auth_headers(cfg["api_key"])
+        url = f"{cfg['api_url']}/v1/audio/transcriptions/jobs/{job_id}/cancel"
+        try:
+            async with httpx.AsyncClient(timeout=10.0, verify=settings.voxhub_ssl_verify) as client:
+                resp = await client.post(url, headers=headers)
+            if resp.status_code == 200:
+                logger.info("VoxHub job %s cancelled", job_id)
+                return True
+            logger.warning("VoxHub cancel job %s returned %s: %s", job_id, resp.status_code, resp.text)
+            return resp.status_code == 409  # Already terminal = treat as success
+        except Exception as e:
+            logger.error("Failed to cancel VoxHub job %s: %s", job_id, e)
+            return False
+
+    @staticmethod
+    async def get_voxhub_queue_info(db: Optional[AsyncSession] = None) -> Dict[str, Any]:
+        """Get VoxHub job queue info (pending + processing counts, job list).
+        Returns dict with 'counts' and 'jobs' keys."""
+        cfg = await TranscriptionService._resolve_transcription_settings(db)
+        if not cfg.get("job_mode"):
+            return {"counts": {}, "jobs": [], "total": 0}
+        headers = TranscriptionService._build_auth_headers(cfg["api_key"])
+        url = f"{cfg['api_url']}/v1/audio/transcriptions/jobs"
+        try:
+            async with httpx.AsyncClient(timeout=10.0, verify=settings.voxhub_ssl_verify) as client:
+                resp = await client.get(url, headers=headers)
+            if resp.status_code == 200:
+                return resp.json()
+            logger.warning("VoxHub jobs list returned %s", resp.status_code)
+            return {"counts": {}, "jobs": [], "total": 0}
+        except Exception as e:
+            logger.error("Failed to fetch VoxHub jobs: %s", e)
+            return {"counts": {}, "jobs": [], "total": 0}
 
     @staticmethod
     def parse_voxhub_response(response: Dict[str, Any]) -> Dict[str, Any]:

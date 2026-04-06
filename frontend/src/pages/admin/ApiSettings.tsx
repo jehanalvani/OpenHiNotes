@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Layout } from '@/components/Layout';
 import { settingsApi, AppSetting } from '@/api/settings';
-import { Save, RotateCcw, Loader, CheckCircle, AlertCircle } from 'lucide-react';
+import { Save, RotateCcw, Loader, CheckCircle, AlertCircle, Server } from 'lucide-react';
 
 const VAD_MODE_OPTIONS = [
   { value: 'silero', label: 'Silero — Fast, lightweight VAD' },
@@ -18,7 +18,7 @@ const SETTING_LABELS: Record<string, { label: string; placeholder: string; type:
   },
   voxhub_api_key: {
     label: 'VoxHub API Key',
-    placeholder: 'Leave empty if no auth required',
+    placeholder: 'Leave empty if VoxHub has no API key configured',
     type: 'password',
   },
   voxhub_model: {
@@ -60,10 +60,36 @@ export function ApiSettings() {
   const [isLoading, setIsLoading] = useState(true);
   const [saving, setSaving] = useState<string | null>(null);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [keepAudioEnabled, setKeepAudioEnabled] = useState(true);
+  const [savingAudio, setSavingAudio] = useState(false);
 
   useEffect(() => {
     loadSettings();
+    loadAudioSettings();
   }, []);
+
+  const loadAudioSettings = async () => {
+    try {
+      const data = await settingsApi.getAudioSettings();
+      setKeepAudioEnabled(data.keep_audio_enabled);
+    } catch (error) {
+      console.error('Failed to load audio settings:', error);
+    }
+  };
+
+  const handleToggleKeepAudio = async () => {
+    setSavingAudio(true);
+    try {
+      const newValue = !keepAudioEnabled;
+      await settingsApi.updateAudioSettings(newValue);
+      setKeepAudioEnabled(newValue);
+      setMessage({ type: 'success', text: `Keep audio ${newValue ? 'enabled' : 'disabled'}` });
+    } catch (error) {
+      setMessage({ type: 'error', text: 'Failed to update audio setting' });
+    } finally {
+      setSavingAudio(false);
+    }
+  };
 
   const loadSettings = async () => {
     setIsLoading(true);
@@ -127,7 +153,8 @@ export function ApiSettings() {
           {groupSettings.map((setting) => {
             const meta = SETTING_LABELS[setting.key];
             const isSensitive = meta?.type === 'password';
-            // For sensitive fields, consider modified only if user typed something
+            // For sensitive fields: modified if user typed something OR
+            // if they explicitly want to clear it (empty value when DB has one)
             const isModified = isSensitive
               ? editValues[setting.key] !== ''
               : editValues[setting.key] !== setting.value;
@@ -226,6 +253,28 @@ export function ApiSettings() {
                       <RotateCcw className="w-4 h-4" />
                     </button>
                   )}
+                  {isSensitive && setting.source === 'database' && (
+                    <button
+                      onClick={async () => {
+                        if (!window.confirm(`Clear "${meta?.label || setting.key}"? This will set it to empty.`)) return;
+                        setSaving(setting.key);
+                        try {
+                          await settingsApi.updateSetting(setting.key, '');
+                          setMessage({ type: 'success', text: `${meta?.label || setting.key} cleared` });
+                          await loadSettings();
+                        } catch {
+                          setMessage({ type: 'error', text: `Failed to clear ${setting.key}` });
+                        } finally {
+                          setSaving(null);
+                        }
+                      }}
+                      disabled={isSaving}
+                      className="px-3 py-2 bg-amber-100 dark:bg-amber-900/30 hover:bg-amber-200 dark:hover:bg-amber-900/50 text-amber-700 dark:text-amber-300 rounded-lg transition-colors disabled:opacity-50 text-sm"
+                      title="Clear this key (set to empty)"
+                    >
+                      Clear
+                    </button>
+                  )}
                 </div>
               </div>
             );
@@ -272,6 +321,42 @@ export function ApiSettings() {
             'llm_api_key',
             'llm_model',
           ])}
+
+          {/* Audio Storage Settings */}
+          <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6">
+            <div className="flex items-center gap-2 mb-4">
+              <Server className="w-5 h-5 text-gray-500" />
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Audio Storage</h3>
+            </div>
+            <div className="space-y-4">
+              <div>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                      Allow users to keep audio
+                    </label>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                      When enabled, users can choose to save audio files on the server alongside their transcriptions.
+                      When disabled, audio is always deleted after transcription completes.
+                    </p>
+                  </div>
+                  <button
+                    onClick={handleToggleKeepAudio}
+                    disabled={savingAudio}
+                    className={`relative inline-flex h-8 w-14 items-center rounded-full transition-colors flex-shrink-0 ml-4 ${
+                      keepAudioEnabled ? 'bg-blue-600' : 'bg-gray-300 dark:bg-gray-600'
+                    } ${savingAudio ? 'opacity-50' : ''}`}
+                  >
+                    <span
+                      className={`inline-block h-6 w-6 transform rounded-full bg-white transition-transform ${
+                        keepAudioEnabled ? 'translate-x-7' : 'translate-x-1'
+                      }`}
+                    />
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
 
           <div className="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
             <p className="text-sm text-gray-600 dark:text-gray-400">

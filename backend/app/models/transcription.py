@@ -1,4 +1,4 @@
-from sqlalchemy import String, Float, Enum as SQLEnum, DateTime, ForeignKey, Text, JSON
+from sqlalchemy import Boolean, String, Float, Enum as SQLEnum, DateTime, ForeignKey, Text, JSON
 from sqlalchemy.orm import mapped_column, Mapped, relationship
 import uuid
 from datetime import datetime
@@ -9,9 +9,11 @@ from app.database import Base
 class TranscriptionStatus(str, Enum):
     """Transcription status enumeration."""
     pending = "pending"
+    queued = "queued"
     processing = "processing"
     completed = "completed"
     failed = "failed"
+    cancelled = "cancelled"
 
 
 class Transcription(Base):
@@ -37,6 +39,15 @@ class Transcription(Base):
     )
     error_message: Mapped[str] = mapped_column(Text, nullable=True)
     notes: Mapped[str] = mapped_column(Text, nullable=True)
+    queue_position: Mapped[int | None] = mapped_column(nullable=True)
+    progress: Mapped[float | None] = mapped_column(Float, nullable=True)
+    progress_stage: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    queued_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    voxhub_job_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    keep_audio: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, server_default="false")
+    audio_available: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False, server_default="true")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False

@@ -93,12 +93,21 @@ async def startup_event():
 
     # Create admin user
     await create_admin_user()
+
+    # Start the transcription queue worker
+    from app.services.queue import transcription_queue
+    await transcription_queue.start()
+
     logger.info("Application startup complete")
 
 
 @app.on_event("shutdown")
 async def shutdown_event():
     """Run on application shutdown."""
+    # Stop the transcription queue worker
+    from app.services.queue import transcription_queue
+    await transcription_queue.stop()
+
     await engine.dispose()
     logger.info("Application shutdown complete")
 

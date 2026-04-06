@@ -11,6 +11,10 @@ export interface SettingsResponse {
   settings: AppSetting[];
 }
 
+export interface AudioSettings {
+  keep_audio_enabled: boolean;
+}
+
 export const settingsApi = {
   async getSettings(): Promise<AppSetting[]> {
     const response = await apiClient.get<SettingsResponse>('/settings');
@@ -23,5 +27,13 @@ export const settingsApi = {
 
   async resetSetting(key: string): Promise<void> {
     await apiClient.delete(`/settings/${key}`);
+  },
+
+  async getAudioSettings(): Promise<AudioSettings> {
+    return apiClient.get<AudioSettings>('/settings/audio');
+  },
+
+  async updateAudioSettings(keepAudioEnabled: boolean): Promise<AudioSettings> {
+    return apiClient.put<AudioSettings>('/settings/audio', { keep_audio_enabled: keepAudioEnabled });
   },
 };
