@@ -32,9 +32,4 @@ def upgrade() -> None:
         )
         ON CONFLICT (key) DO NOTHING
         """
-    )
-
-
-def downgrade() -> None:
-    op.drop_column("summary_templates", "is_default")
-    op.execute("DELETE FROM app_settings WHERE key = 'llm_system_prompt'")
+ 
