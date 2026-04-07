@@ -191,91 +191,15 @@ export function Templates({ embedded }: { embedded?: boolean }) {
         </div>
       </div>
 
-      {/* Create / Edit form */}
-      {(isCreating || editingId) && (
-        <div className="bg-white dark:bg-gray-800 rounded-lg p-6 border border-gray-200 dark:border-gray-700">
-          <h2 className="text-lg font-bold text-gray-900 dark:text-white mb-4">
-            {editingId ? 'Edit Template' : 'Create Template'}
-          </h2>
-          <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  Name
-                </label>
-                <input
-                  type="text"
-                  value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  className="w-full px-4 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Template name"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  Category
-                </label>
-                <input
-                  type="text"
-                  value={formData.category}
-                  onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-                  className="w-full px-4 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="e.g. General, HR, Security..."
-                  list="category-suggestions"
-                />
-                <datalist id="category-suggestions">
-                  {CATEGORY_ORDER.map((c) => <option key={c} value={c} />)}
-                </datalist>
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                Description
-              </label>
-              <input
-                type="text"
-                value={formData.description}
-                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                className="w-full px-4 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="Brief description of what this template does"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                Prompt Template
-              </label>
-              <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
-                {"Use {{transcript}} for transcription text, {{meeting_date}} for date extracted from device filename"}
-              </p>
-              <textarea
-                value={formData.prompt_template}
-                onChange={(e) => setFormData({ ...formData, prompt_template: e.target.value })}
-                rows={8}
-                className="w-full px-4 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
-                placeholder="Enter prompt template..."
-              />
-            </div>
-
-            <div className="flex gap-3">
-              <button
-                onClick={handleSave}
-                className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors"
-              >
-                <Save className="w-4 h-4" />
-                Save
-              </button>
-              <button
-                onClick={cancel}
-                className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-gray-300 dark:bg-gray-600 text-gray-900 dark:text-white rounded-lg font-medium transition-colors"
-              >
-                <X className="w-4 h-4" />
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
+      {/* Create form (only for new templates — edit is inline) */}
+      {isCreating && (
+        <TemplateForm
+          formData={formData}
+          setFormData={setFormData}
+          onSave={handleSave}
+          onCancel={cancel}
+          title="Create Template"
+        />
       )}
 
       {/* Template list */}
@@ -292,14 +216,26 @@ export function Templates({ embedded }: { embedded?: boolean }) {
           /* Flat list when searching */
           <div className="divide-y divide-gray-200 dark:divide-gray-700">
             {filtered.map((template) => (
-              <TemplateCard
-                key={template.id}
-                template={template}
-                onEdit={startEdit}
-                onDelete={handleDelete}
-                onToggle={handleToggle}
-                showCategory
-              />
+              editingId === template.id ? (
+                <TemplateForm
+                  key={template.id}
+                  formData={formData}
+                  setFormData={setFormData}
+                  onSave={handleSave}
+                  onCancel={cancel}
+                  title="Edit Template"
+                  inline
+                />
+              ) : (
+                <TemplateCard
+                  key={template.id}
+                  template={template}
+                  onEdit={startEdit}
+                  onDelete={handleDelete}
+                  onToggle={handleToggle}
+                  showCategory
+                />
+              )
             ))}
           </div>
         ) : (
@@ -316,13 +252,25 @@ export function Templates({ embedded }: { embedded?: boolean }) {
               </div>
               <div className="divide-y divide-gray-100 dark:divide-gray-700">
                 {items.map((template) => (
-                  <TemplateCard
-                    key={template.id}
-                    template={template}
-                    onEdit={startEdit}
-                    onDelete={handleDelete}
-                    onToggle={handleToggle}
-                  />
+                  editingId === template.id ? (
+                    <TemplateForm
+                      key={template.id}
+                      formData={formData}
+                      setFormData={setFormData}
+                      onSave={handleSave}
+                      onCancel={cancel}
+                      title="Edit Template"
+                      inline
+                    />
+                  ) : (
+                    <TemplateCard
+                      key={template.id}
+                      template={template}
+                      onEdit={startEdit}
+                      onDelete={handleDelete}
+                      onToggle={handleToggle}
+                    />
+                  )
                 ))}
               </div>
             </div>
@@ -343,6 +291,98 @@ export function Templates({ embedded }: { embedded?: boolean }) {
 
   if (embedded) return content;
   return <Layout title="Summary Templates">{content}</Layout>;
+}
+
+function TemplateForm({
+  formData,
+  setFormData,
+  onSave,
+  onCancel,
+  title,
+  inline = false,
+}: {
+  formData: { name: string; description: string; prompt_template: string; category: string };
+  setFormData: (data: { name: string; description: string; prompt_template: string; category: string }) => void;
+  onSave: () => void;
+  onCancel: () => void;
+  title: string;
+  inline?: boolean;
+}) {
+  return (
+    <div className={inline
+      ? 'p-6 bg-blue-50/50 dark:bg-blue-900/10 border-l-4 border-blue-500'
+      : 'bg-white dark:bg-gray-800 rounded-lg p-6 border border-gray-200 dark:border-gray-700'
+    }>
+      <h2 className="text-lg font-bold text-gray-900 dark:text-white mb-4">{title}</h2>
+      <div className="space-y-4">
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Name</label>
+            <input
+              type="text"
+              value={formData.name}
+              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+              className="w-full px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+              placeholder="Template name"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Category</label>
+            <input
+              type="text"
+              value={formData.category}
+              onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+              className="w-full px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+              placeholder="e.g. General, HR, Security..."
+              list="category-suggestions"
+            />
+            <datalist id="category-suggestions">
+              {CATEGORY_ORDER.map((c) => <option key={c} value={c} />)}
+            </datalist>
+          </div>
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Description</label>
+          <input
+            type="text"
+            value={formData.description}
+            onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+            className="w-full px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+            placeholder="Brief description of what this template does"
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Prompt Template</label>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">
+            {"Use {{transcript}} for transcription text, {{meeting_date}} for date extracted from device filename"}
+          </p>
+          <textarea
+            value={formData.prompt_template}
+            onChange={(e) => setFormData({ ...formData, prompt_template: e.target.value })}
+            rows={6}
+            className="w-full px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y text-sm font-mono"
+            placeholder="Enter prompt template..."
+          />
+        </div>
+        <div className="flex gap-3">
+          <button
+            onClick={onSave}
+            className="flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors text-sm"
+          >
+            <Save className="w-4 h-4" />
+            Save
+          </button>
+          <button
+            onClick={onCancel}
+            className="flex items-center justify-center gap-2 px-4 py-2 bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-white rounded-lg font-medium transition-colors text-sm"
+          >
+            <X className="w-4 h-4" />
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function TemplateCard({
