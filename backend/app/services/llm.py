@@ -41,6 +41,7 @@ class LLMService:
         prompt_template: str,
         custom_prompt: Optional[str] = None,
         db: Optional[AsyncSession] = None,
+        meeting_date: Optional[str] = None,
     ) -> tuple[str, str]:
         """Create a summary from a transcript using a template or custom prompt."""
         cfg = await LLMService._resolve_settings(db)
@@ -50,6 +51,10 @@ class LLMService:
             final_prompt = custom_prompt.replace("{{transcript}}", transcript_text)
         else:
             final_prompt = prompt_template.replace("{{transcript}}", transcript_text)
+
+        # Resolve {{meeting_date}} placeholder
+        date_str = meeting_date or "Not available"
+        final_prompt = final_prompt.replace("{{meeting_date}}", date_str)
 
         # Ensure the transcript is always included: if the prompt doesn't contain
         # the transcript text (i.e. no {{transcript}} placeholder was present),

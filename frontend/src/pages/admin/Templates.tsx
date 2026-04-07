@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { Layout } from '@/components/Layout';
 import { templatesApi } from '@/api/templates';
 import { SummaryTemplate } from '@/types';
-import { Trash2, Edit, Plus, Save, X, Search } from 'lucide-react';
+import { Trash2, Edit, Plus, Save, X, Search, ToggleLeft, ToggleRight } from 'lucide-react';
 
 /** Canonical category order */
 const CATEGORY_ORDER = [
@@ -44,6 +44,7 @@ export function Templates({ embedded }: { embedded?: boolean }) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isCreating, setIsCreating] = useState(false);
   const [search, setSearch] = useState('');
+  const [showInactive, setShowInactive] = useState(true);
   const [formData, setFormData] = useState({
     name: '',
     description: '',
@@ -58,7 +59,7 @@ export function Templates({ embedded }: { embedded?: boolean }) {
   const loadTemplates = async () => {
     setIsLoading(true);
     try {
-      const t = await templatesApi.getTemplates();
+      const t = await templatesApi.getTemplates(true); // include inactive for admin
       setTemplates(t);
     } catch (error) {
       console.error('Failed to load templates:', error);
@@ -67,8 +68,17 @@ export function Templates({ embedded }: { embedded?: boolean }) {
     }
   };
 
+  const handleToggle = async (id: string) => {
+    try {
+      const updated = await templatesApi.toggleTemplate(id);
+      setTemplates((prev) => prev.map((t) => (t.id === id ? updated : t)));
+    } catch (error) {
+      console.error('Failed to toggle template:', error);
+    }
+  };
+
   const handleDelete = async (id: string) => {
-    if (window.confirm('Delete this template?')) {
+    if (window.confirm('Permanently delete this template? This cannot be undone.')) {
       try {
         await templatesApi.deleteTemplate(id);
         setTemplates((prev) => prev.filter((t) => t.id !== id));
@@ -118,24 +128,30 @@ export function Templates({ embedded }: { embedded?: boolean }) {
     setIsCreating(false);
   };
 
-  // Filtered list based on search
+  // Filtered list based on search + active filter
   const query = search.toLowerCase().trim();
   const filtered = useMemo(() => {
-    if (!query) return templates;
-    return templates.filter(
-      (t) =>
-        t.name.toLowerCase().includes(query) ||
-        (t.category || '').toLowerCase().includes(query) ||
-        (t.description || '').toLowerCase().includes(query)
-    );
-  }, [templates, query]);
+    let result = templates;
+    if (!showInactive) {
+      result = result.filter((t) => t.is_active);
+    }
+    if (query) {
+      result = result.filter(
+        (t) =>
+          t.name.toLowerCase().includes(query) ||
+          (t.category || '').toLowerCase().includes(query) ||
+          (t.description || '').toLowerCase().includes(query)
+      );
+    }
+    return result;
+  }, [templates, query, showInactive]);
 
   const grouped = useMemo(() => groupByCategory(filtered), [filtered]);
   const isSearching = query.length > 0;
 
   const content = (
     <div className="space-y-6">
-      {/* Top bar: Create button + Search */}
+      {/* Top bar: Create button + Show inactive toggle + Search */}
       <div className="flex items-center gap-3">
         {!isCreating && !editingId && (
           <button
@@ -146,6 +162,18 @@ export function Templates({ embedded }: { embedded?: boolean }) {
             Create Template
           </button>
         )}
+        <button
+          onClick={() => setShowInactive(!showInactive)}
+          className={`flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg border transition-colors shrink-0 ${
+            showInactive
+              ? 'bg-gray-100 dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300'
+              : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-400 dark:text-gray-500'
+          }`}
+          title={showInactive ? 'Showing all templates' : 'Showing active only'}
+        >
+          {showInactive ? <ToggleRight className="w-4 h-4" /> : <ToggleLeft className="w-4 h-4" />}
+          Inactive
+        </button>
         <div className="flex-1 flex items-center gap-2 px-3 py-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg">
           <Search className="w-4 h-4 text-gray-400 shrink-0" />
           <input
@@ -219,7 +247,7 @@ export function Templates({ embedded }: { embedded?: boolean }) {
                 Prompt Template
               </label>
               <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
-                {"Use {{transcript}} to reference the transcription text"}
+                {"Use {{transcript}} for transcription text, {{meeting_date}} for date extracted from device filename"}
               </p>
               <textarea
                 value={formData.prompt_template}
@@ -269,6 +297,7 @@ export function Templates({ embedded }: { embedded?: boolean }) {
                 template={template}
                 onEdit={startEdit}
                 onDelete={handleDelete}
+                onToggle={handleToggle}
                 showCategory
               />
             ))}
@@ -292,6 +321,7 @@ export function Templates({ embedded }: { embedded?: boolean }) {
                     template={template}
                     onEdit={startEdit}
                     onDelete={handleDelete}
+                    onToggle={handleToggle}
                   />
                 ))}
               </div>
@@ -319,15 +349,19 @@ function TemplateCard({
   template,
   onEdit,
   onDelete,
+  onToggle,
   showCategory = false,
 }: {
   template: SummaryTemplate;
   onEdit: (t: SummaryTemplate) => void;
   onDelete: (id: string) => void;
+  onToggle: (id: string) => void;
   showCategory?: boolean;
 }) {
   return (
-    <div className="p-6 hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors">
+    <div className={`p-6 hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors ${
+      !template.is_active ? 'opacity-60' : ''
+    }`}>
       <div className="flex items-start justify-between gap-4">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
@@ -355,15 +389,17 @@ function TemplateCard({
               Built-in
             </span>
           )}
-          <span
-            className={`px-2 py-1 text-xs font-medium rounded ${
+          <button
+            onClick={() => onToggle(template.id)}
+            className={`px-2 py-1 text-xs font-medium rounded cursor-pointer transition-colors ${
               template.is_active
-                ? 'bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300'
-                : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400'
+                ? 'bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300 hover:bg-green-200 dark:hover:bg-green-800'
+                : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600'
             }`}
+            title={template.is_active ? 'Click to deactivate' : 'Click to activate'}
           >
             {template.is_active ? 'Active' : 'Inactive'}
-          </span>
+          </button>
         </div>
       </div>
       <div className="flex gap-3 mt-4">
@@ -374,13 +410,15 @@ function TemplateCard({
           <Edit className="w-4 h-4" />
           Edit
         </button>
-        <button
-          onClick={() => onDelete(template.id)}
-          className="flex items-center gap-1 px-3 py-1 text-sm bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-300 rounded hover:bg-red-200 dark:hover:bg-red-800 transition-colors"
-        >
-          <Trash2 className="w-4 h-4" />
-          Delete
-        </button>
+        {!template.is_default && (
+          <button
+            onClick={() => onDelete(template.id)}
+            className="flex items-center gap-1 px-3 py-1 text-sm bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-300 rounded hover:bg-red-200 dark:hover:bg-red-800 transition-colors"
+          >
+            <Trash2 className="w-4 h-4" />
+            Delete
+          </button>
+        )}
       </div>
     </div>
   );

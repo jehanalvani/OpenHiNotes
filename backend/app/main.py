@@ -86,17 +86,13 @@ async def create_admin_user():
 
 
 async def seed_default_templates():
-    """Seed default summary templates if they don't exist yet."""
+    """Seed default summary templates if they don't exist yet.
+
+    On subsequent startups, sync categories and add any new templates
+    that were added to DEFAULT_TEMPLATES since the last seed.
+    """
     try:
         async with AsyncSessionLocal() as db:
-            # Check if default templates already exist
-            result = await db.execute(
-                select(SummaryTemplate).where(SummaryTemplate.is_default == True).limit(1)
-            )
-            if result.scalars().first():
-                logger.info("Default templates already seeded")
-                return
-
             # Get admin user to assign as creator
             result = await db.execute(
                 select(User).where(User.email == settings.admin_email)
@@ -106,20 +102,56 @@ async def seed_default_templates():
                 logger.warning("Admin user not found — skipping template seeding")
                 return
 
-            for tpl in DEFAULT_TEMPLATES:
-                template = SummaryTemplate(
-                    name=tpl["name"],
-                    description=tpl["description"],
-                    prompt_template=tpl["prompt_template"],
-                    category=tpl.get("category"),
-                    created_by=admin_user.id,
-                    is_active=True,
-                    is_default=True,
-                )
-                db.add(template)
+            # Load existing default templates
+            result = await db.execute(
+                select(SummaryTemplate).where(SummaryTemplate.is_default == True)
+            )
+            existing = {t.name: t for t in result.scalars().all()}
 
-            await db.commit()
-            logger.info(f"Seeded {len(DEFAULT_TEMPLATES)} default templates")
+            if not existing:
+                # First-time seed: create all templates
+                for tpl in DEFAULT_TEMPLATES:
+                    template = SummaryTemplate(
+                        name=tpl["name"],
+                        description=tpl["description"],
+                        prompt_template=tpl["prompt_template"],
+                        category=tpl.get("category"),
+                        created_by=admin_user.id,
+                        is_active=True,
+                        is_default=True,
+                    )
+                    db.add(template)
+                await db.commit()
+                logger.info(f"Seeded {len(DEFAULT_TEMPLATES)} default templates")
+            else:
+                # Sync: update categories + add missing templates
+                updated = 0
+                added = 0
+                for tpl in DEFAULT_TEMPLATES:
+                    if tpl["name"] in existing:
+                        db_tpl = existing[tpl["name"]]
+                        new_cat = tpl.get("category")
+                        if db_tpl.category != new_cat:
+                            db_tpl.category = new_cat
+                            updated += 1
+                    else:
+                        # New template added since last seed
+                        template = SummaryTemplate(
+                            name=tpl["name"],
+                            description=tpl["description"],
+                            prompt_template=tpl["prompt_template"],
+                            category=tpl.get("category"),
+                            created_by=admin_user.id,
+                            is_active=True,
+                            is_default=True,
+                        )
+                        db.add(template)
+                        added += 1
+                await db.commit()
+                if updated or added:
+                    logger.info(f"Default templates sync: {updated} updated, {added} added")
+                else:
+                    logger.info("Default templates already up to date")
     except Exception as e:
         logger.error(f"Failed to seed default templates: {str(e)}")
 

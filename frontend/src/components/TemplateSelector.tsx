@@ -61,6 +61,7 @@ export function TemplateSelector({
 }: TemplateSelectorProps) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
+  const [openUpward, setOpenUpward] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -80,6 +81,12 @@ export function TemplateSelector({
 
   const handleOpen = () => {
     if (disabled) return;
+    // Determine if dropdown should open upward
+    if (containerRef.current) {
+      const rect = containerRef.current.getBoundingClientRect();
+      const spaceBelow = window.innerHeight - rect.bottom;
+      setOpenUpward(spaceBelow < 320); // 320px = max dropdown height + padding
+    }
     setOpen(true);
     setTimeout(() => inputRef.current?.focus(), 0);
   };
@@ -149,7 +156,9 @@ export function TemplateSelector({
 
       {/* Dropdown */}
       {open && (
-        <div className="absolute z-50 mt-1 w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg shadow-lg overflow-hidden">
+        <div className={`absolute z-50 w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg shadow-lg overflow-hidden ${
+          openUpward ? 'bottom-full mb-1' : 'top-full mt-1'
+        }`}>
           {/* Search input */}
           <div className="p-2 border-b border-gray-100 dark:border-gray-700">
             <div className="flex items-center gap-2 px-2 py-1.5 bg-gray-50 dark:bg-gray-700 rounded-md">

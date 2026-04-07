@@ -38,6 +38,7 @@ from app.dependencies import get_current_user
 from app.services.transcription import TranscriptionService
 from app.services.llm import LLMService
 from app.services.permissions import PermissionService
+from app.utils.date_extract import extract_meeting_date
 
 router = APIRouter(prefix="/transcriptions", tags=["transcriptions"])
 
@@ -122,8 +123,10 @@ async def upload_transcription(
 
             # Create summary
             if transcription.text:
+                meeting_date = extract_meeting_date(transcription.original_filename)
                 summary_text, model_used = await LLMService.create_summary(
-                    transcription.text, template.prompt_template
+                    transcription.text, template.prompt_template,
+                    db=db, meeting_date=meeting_date,
                 )
                 summary = Summary(
                     transcription_id=transcription.id,
@@ -207,8 +210,10 @@ async def upload_transcription_stream(
                     )
                     template = result.scalars().first()
                     if template:
+                        meeting_date = extract_meeting_date(transcription.original_filename)
                         summary_text, model_used = await LLMService.create_summary(
-                            transcription.text, template.prompt_template
+                            transcription.text, template.prompt_template,
+                            db=db, meeting_date=meeting_date,
                         )
                         summary = Summary(
                             transcription_id=transcription.id,
@@ -454,6 +459,8 @@ async def queue_transcription(
         status=TranscriptionStatus.pending,
         keep_audio=keep_audio,
         audio_available=True,
+        auto_summarize=auto_summarize,
+        auto_summarize_template_id=template_id,
     )
     db.add(transcription)
     await db.commit()
