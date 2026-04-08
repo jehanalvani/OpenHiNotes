@@ -429,4 +429,16 @@ class TranscriptionQueue:
                             return
                         transcription.status = TranscriptionStatus.failed
                         transcription.error_message = str(e)
-                
+                        transcription.completed_at = datetime.utcnow()
+                        transcription.queue_position = None
+                        await db.commit()
+
+                await self._notify(transcription_id, {
+                    "event": "failed",
+                    "status": "failed",
+                    "error": str(e),
+                })
+
+
+# Singleton instance
+transcription_queue = TranscriptionQueue()
