@@ -291,14 +291,4 @@ export function TranscribeModal({
             <button
               onClick={handleSubmit}
               disabled={isSubmitting || !audioFile}
-              className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors disabled:opacity-50 font-medium flex items-center justify-center gap-2"
-            >
-              {isSubmitting && <Loader className="w-4 h-4 animate-spin" />}
-              {isSubmitting ? 'Sending...' : autoSummarize ? 'Transcribe & Summarize' : 'Transcribe'}
-            </button>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
+              className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors disabled:opacity-50 font-medium flex items-center ju

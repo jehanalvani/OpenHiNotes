@@ -448,18 +448,4 @@ function TemplateCard({
           className="flex items-center gap-1 px-3 py-1 text-sm bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 rounded hover:bg-blue-200 dark:hover:bg-blue-800 transition-colors"
         >
           <Edit className="w-4 h-4" />
-          Edit
-        </button>
-        {!template.is_default && (
-          <button
-            onClick={() => onDelete(template.id)}
-            className="flex items-center gap-1 px-3 py-1 text-sm bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-300 rounded hover:bg-red-200 dark:hover:bg-red-800 transition-colors"
-          >
-            <Trash2 className="w-4 h-4" />
-            Delete
-          </button>
-        )}
-      </div>
-    </div>
-  );
-}
+          E

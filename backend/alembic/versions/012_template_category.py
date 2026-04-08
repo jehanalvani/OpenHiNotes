@@ -21,4 +21,4 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_column("summary_templates", "category")
+    op.drop_column("summary_t

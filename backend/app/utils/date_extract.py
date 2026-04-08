@@ -58,7 +58,4 @@ def extract_meeting_date(original_filename: str) -> Optional[str]:
                     int(hour), int(minute), int(second),
                 )
                 return dt.strftime("%B %d, %Y at %I:%M %p")
-            except ValueError:
-                pass
-
-    return None
+         
