@@ -761,4 +761,19 @@ DEFAULT_TEMPLATES: list[dict] = [
             "Testing windows, allowed attack types, social-engineering permissions, "
             "DoS restrictions, data-handling rules, point of contact for emergencies.\n\n"
             "## 🔑 Access & Credentials\n"
-            "VPN access, test accounts, API keys, or other credentials to be pr
+            "VPN access, test accounts, API keys, or other credentials to be provided. "
+            "Note any prerequisite steps (NDA, VPN setup, etc.).\n\n"
+            "## 📋 Deliverables & Reporting\n"
+            "Expected deliverables (executive summary, technical report, retest), "
+            "reporting format, and severity rating framework (CVSS, custom).\n\n"
+            "## 📅 Timeline & Milestones\n"
+            "| Phase | Start | End |\n|---|---|---|\n"
+            "Kick-off, active testing, draft report, final report, retest.\n\n"
+            "## ⚠️ Risks & Concerns\n"
+            "Potential risks raised during the call (uptime, compliance, data sensitivity).\n\n"
+            "## 🎯 Next Steps\n"
+            "| Action | Owner | Deadline |\n|---|---|---|\n\n"
+            "{{transcript}}"
+        ),
+    },
+]

@@ -31,4 +31,4 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     op.drop_column("transcriptions", "auto_summarize_template_id")
-    op.drop_column("tr
+    op.drop_column("transcriptions", "auto_summarize")

@@ -244,4 +244,15 @@ function TemplateOption({
             </span>
           </div>
           {template.description && (
-            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 truncate">
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 truncate">
+              {template.description}
+            </p>
+          )}
+        </div>
+        {selected && (
+          <span className="text-blue-600 dark:text-blue-400 text-xs shrink-0 mt-0.5">✓</span>
+        )}
+      </div>
+    </button>
+  );
+}

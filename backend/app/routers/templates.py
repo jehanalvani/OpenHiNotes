@@ -152,4 +152,8 @@ async def delete_template(
     if template.is_default:
         # Default (built-in) templates can only be deactivated, not deleted
         template.is_active = False
-  
+        await db.commit()
+    else:
+        # User-created templates can be permanently deleted
+        await db.delete(template)
+        await db.commit()

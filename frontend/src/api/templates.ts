@@ -35,4 +35,6 @@ export const templatesApi = {
   },
 
   async deleteTemplate(id: string): Promise<void> {
-    return apiClient.delet
+    return apiClient.delete<void>(`/templates/${id}`);
+  },
+};
