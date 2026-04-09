@@ -1,14 +1,14 @@
 """Add OIDC provider and user identity tables for SSO support
 
-Revision ID: 015_oidc_support
-Revises: 014_voice_profiles
+Revision ID: 016_oidc_support
+Revises: 015_password_reset
 Create Date: 2026-04-09
 """
 from alembic import op
 import sqlalchemy as sa
 
-revision = "015_oidc_support"
-down_revision = "014_voice_profiles"
+revision = "016_oidc_support"
+down_revision = "015_password_reset"
 branch_labels = None
 depends_on = None
 
