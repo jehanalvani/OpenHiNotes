@@ -1,8 +1,9 @@
 import { useNavigate } from 'react-router-dom';
-import { LogOut, Moon, Sun, Settings } from 'lucide-react';
+import { LogOut, Moon, Sun, Settings, Menu } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
 import { useAuthStore } from '@/store/useAuthStore';
 import { useAppStore } from '@/store/useAppStore';
+import { useLayoutStore } from '@/store/useLayoutStore';
 import { QueueIndicator } from '@/components/QueuePanel';
 
 interface HeaderProps {
@@ -13,6 +14,7 @@ export function Header({ title }: HeaderProps) {
   const navigate = useNavigate();
   const { user, logout } = useAuthStore();
   const { theme, setTheme, device } = useAppStore();
+  const { toggleMobileMenu } = useLayoutStore();
   const deviceConnected = device?.connected ?? false;
   const [showUserMenu, setShowUserMenu] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -41,18 +43,28 @@ export function Header({ title }: HeaderProps) {
   }, [showUserMenu]);
 
   return (
-    <div className="relative z-40 bg-white/80 dark:bg-gray-800/80 backdrop-blur-xl border-b border-gray-200/60 dark:border-gray-700/40 px-6 py-4 flex items-center justify-between shadow-sm shadow-gray-200/50 dark:shadow-gray-900/50">
-      <h1 className="text-2xl font-bold text-gray-900 dark:text-white tracking-tight">{title}</h1>
+    <div className="relative z-40 bg-white/80 dark:bg-gray-800/80 backdrop-blur-xl border-b border-gray-200/60 dark:border-gray-700/40 px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-between shadow-sm shadow-gray-200/50 dark:shadow-gray-900/50">
+      <div className="flex items-center gap-3 min-w-0">
+        {/* Hamburger menu — mobile only */}
+        <button
+          onClick={toggleMobileMenu}
+          className="md:hidden p-2 -ml-1 hover:bg-gray-100 dark:hover:bg-gray-700/60 rounded-lg transition-colors text-gray-600 dark:text-gray-400"
+          aria-label="Open menu"
+        >
+          <Menu className="w-5 h-5" />
+        </button>
+        <h1 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white tracking-tight truncate">{title}</h1>
+      </div>
 
-      <div className="flex items-center gap-3">
-        {/* Device connected badge */}
+      <div className="flex items-center gap-2 sm:gap-3">
+        {/* Device connected badge — hide text on mobile */}
         {deviceConnected && (
-          <div className="flex items-center gap-2 px-3 py-1.5 bg-green-50 dark:bg-green-900/30 border border-green-200/60 dark:border-green-700/40 rounded-full">
+          <div className="flex items-center gap-2 px-2 sm:px-3 py-1.5 bg-green-50 dark:bg-green-900/30 border border-green-200/60 dark:border-green-700/40 rounded-full">
             <span className="relative flex h-2 w-2">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
               <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500" />
             </span>
-            <span className="text-xs font-medium text-green-700 dark:text-green-300">Device Connected</span>
+            <span className="hidden sm:inline text-xs font-medium text-green-700 dark:text-green-300">Device Connected</span>
           </div>
         )}
 
@@ -62,11 +74,10 @@ export function Header({ title }: HeaderProps) {
         {/* Theme toggle */}
         <button
           onClick={toggleTheme}
-          className="relative p-2.5 hover:bg-gray-100 dark:hover:bg-gray-700/60 rounded-xl transition-all duration-300 group"
+          className="relative p-2 sm:p-2.5 hover:bg-gray-100 dark:hover:bg-gray-700/60 rounded-xl transition-all duration-300 group"
           aria-label="Toggle theme"
         >
           <div className="relative w-5 h-5 overflow-hidden">
-            {/* Sun icon */}
             <Sun
               className={`absolute inset-0 w-5 h-5 text-amber-500 transition-all duration-500 ease-in-out ${
                 theme === 'dark'
@@ -74,7 +85,6 @@ export function Header({ title }: HeaderProps) {
                   : '-rotate-90 scale-0 opacity-0'
               }`}
             />
-            {/* Moon icon */}
             <Moon
               className={`absolute inset-0 w-5 h-5 text-indigo-500 dark:text-indigo-400 transition-all duration-500 ease-in-out ${
                 theme === 'light'
@@ -89,29 +99,26 @@ export function Header({ title }: HeaderProps) {
         <div className="relative" ref={menuRef}>
           <button
             onClick={() => setShowUserMenu(!showUserMenu)}
-            className={`flex items-center gap-2.5 px-3 py-2 rounded-xl transition-all duration-200 ${
+            className={`flex items-center gap-2 sm:gap-2.5 px-2 sm:px-3 py-2 rounded-xl transition-all duration-200 ${
               showUserMenu
                 ? 'bg-gray-100 dark:bg-gray-700/60'
                 : 'hover:bg-gray-100 dark:hover:bg-gray-700/60'
             }`}
           >
-            <div className="w-7 h-7 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center">
+            <div className="w-7 h-7 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center flex-shrink-0">
               <span className="text-white text-xs font-semibold">
                 {user?.display_name?.[0]?.toUpperCase() || user?.email?.[0]?.toUpperCase() || 'U'}
               </span>
             </div>
-            <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{user?.email}</span>
+            <span className="hidden sm:inline text-sm font-medium text-gray-700 dark:text-gray-300 max-w-[150px] truncate">{user?.email}</span>
           </button>
 
           {showUserMenu && (
             <div className="absolute right-0 mt-2 w-56 bg-white dark:bg-gray-800 rounded-xl shadow-xl shadow-gray-200/50 dark:shadow-gray-900/50 border border-gray-200/60 dark:border-gray-700/40 z-50 overflow-hidden animate-in fade-in slide-in-from-top-1 duration-200">
-              {/* User info */}
               <div className="px-4 py-3 border-b border-gray-100 dark:border-gray-700/60">
                 <p className="text-sm font-semibold text-gray-900 dark:text-white">{user?.display_name || 'User'}</p>
                 <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 truncate">{user?.email}</p>
               </div>
-
-              {/* Menu items */}
               <div className="py-1.5">
                 <button
                   onClick={() => {

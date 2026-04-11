@@ -60,7 +60,7 @@ function SummaryModal({
         {/* Body */}
         <div className="flex-1 overflow-y-auto px-6 py-4">
           <div
-            className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed"
+            className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed markdown-content"
             dangerouslySetInnerHTML={{ __html: formatMarkdown(summary.content) }}
           />
         </div>
@@ -537,7 +537,7 @@ export function TranscriptionDetail() {
           )}
 
           {/* Permission badge + action buttons */}
-          <div className="flex items-center gap-2 ml-auto">
+          <div className="flex items-center gap-2 ml-auto flex-shrink-0 flex-wrap justify-end">
             {/* Permission indicator for non-owners */}
             {permissionLevel && permissionLevel !== 'owner' && (
               <span
@@ -591,7 +591,7 @@ export function TranscriptionDetail() {
           </div>
         </div>
 
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3 sm:gap-4">
           <div className="bg-white dark:bg-gray-800 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
             <p className="text-xs text-gray-600 dark:text-gray-400 mb-1">Language</p>
             <p className="font-semibold text-gray-900 dark:text-white uppercase">
@@ -991,3 +991,4 @@ export function TranscriptionDetail() {
     </Layout>
   );
 }
+                                                                                              
