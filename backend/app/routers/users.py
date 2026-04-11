@@ -339,7 +339,10 @@ async def update_recording_aliases(
     db: AsyncSession = Depends(get_db),
 ):
     """Replace the current user's recording aliases map."""
-    current_user.recording_aliases = aliases
+    from sqlalchemy.orm.attributes import flag_modified
+    current_user.recording_aliases = dict(aliases)
+    flag_modified(current_user, "recording_aliases")
     db.add(current_user)
     await db.commit()
-    return current_user.recording_aliases
+    await db.refresh(current_user)
+    return current_user.recording_aliases or {}
