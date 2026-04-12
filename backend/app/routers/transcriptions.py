@@ -432,11 +432,13 @@ async def queue_transcription(
     keep_audio: bool = Form(False),
     auto_summarize: bool = Form(False),
     template_id: uuid.UUID = Form(None),
+    recording_type: str = Form(None),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Upload audio file and add transcription to the background queue.
-    Returns immediately with the transcription ID and queue position."""
+    Returns immediately with the transcription ID and queue position.
+    Optional recording_type overrides auto-detection (for web uploads)."""
     # Enforce admin keep_audio setting
     if keep_audio:
         from app.models.app_settings import AppSetting
@@ -462,7 +464,11 @@ async def queue_transcription(
 
     # Create transcription record with pending status
     from app.services.transcription import detect_recording_type
-    rec_type = detect_recording_type(original_filename)
+    from app.models.transcription import RecordingType as RT
+    if recording_type in ("record", "whisper"):
+        rec_type = RT(recording_type)
+    else:
+        rec_type = detect_recording_type(original_filename)
 
     transcription = Transcription(
         user_id=current_user.id,

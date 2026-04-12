@@ -225,7 +225,8 @@ export const transcriptionsApi = {
     language: string = 'auto',
     keepAudio: boolean = false,
     autoSummarize: boolean = false,
-    templateId?: string
+    templateId?: string,
+    recordingType?: 'record' | 'whisper',
   ): Promise<Transcription> {
     const extraFields: Record<string, string> = {
       language,
@@ -234,6 +235,9 @@ export const transcriptionsApi = {
     };
     if (templateId) {
       extraFields.template_id = templateId;
+    }
+    if (recordingType) {
+      extraFields.recording_type = recordingType;
     }
     return apiClient.uploadFile<Transcription>(
       '/transcriptions/queue',

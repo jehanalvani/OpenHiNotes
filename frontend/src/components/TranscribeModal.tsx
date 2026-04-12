@@ -63,15 +63,22 @@ export function TranscribeModal({
       .catch(() => {});
   }, []);
 
-  const recordingType: RecordingType = useMemo(
+  const detectedType: RecordingType = useMemo(
     () => (/wip/i.test(fileName) ? 'whisper' : 'record'),
     [fileName],
   );
+  const [recordingType, setRecordingType] = useState<RecordingType>(detectedType);
+
+  // Sync when fileName changes (e.g. modal reopened with different file)
+  useEffect(() => {
+    setRecordingType(detectedType);
+  }, [detectedType]);
 
   useEffect(() => {
     if (autoSummarize) {
       loadTemplates();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoSummarize, recordingType]);
 
   const loadTemplates = async () => {
@@ -102,6 +109,7 @@ export function TranscribeModal({
         keepAudio,
         autoSummarize,
         autoSummarize ? selectedTemplate : undefined,
+        recordingType,
       );
 
       // If an alias / initial title was provided, set it
@@ -190,6 +198,40 @@ export function TranscribeModal({
                 </option>
               ))}
             </select>
+          </div>
+
+          <div>
+            <label className="text-sm font-medium text-gray-700 dark:text-gray-300 block mb-2">
+              Recording Type
+            </label>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setRecordingType('record')}
+                disabled={isSubmitting}
+                className={`flex-1 px-3 py-2 text-sm font-medium rounded-lg border transition-colors disabled:opacity-50 ${
+                  recordingType === 'record'
+                    ? 'bg-sky-100 dark:bg-sky-900/40 border-sky-400 dark:border-sky-600 text-sky-700 dark:text-sky-300'
+                    : 'bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:border-gray-400'
+                }`}
+              >
+                Record
+                <span className="block text-xs font-normal mt-0.5 opacity-70">Multi-speaker, diarization</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setRecordingType('whisper')}
+                disabled={isSubmitting}
+                className={`flex-1 px-3 py-2 text-sm font-medium rounded-lg border transition-colors disabled:opacity-50 ${
+                  recordingType === 'whisper'
+                    ? 'bg-violet-100 dark:bg-violet-900/40 border-violet-400 dark:border-violet-600 text-violet-700 dark:text-violet-300'
+                    : 'bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:border-gray-400'
+                }`}
+              >
+                Whisper
+                <span className="block text-xs font-normal mt-0.5 opacity-70">Voice memo, single speaker</span>
+              </button>
+            </div>
           </div>
 
           <div className="space-y-3">
