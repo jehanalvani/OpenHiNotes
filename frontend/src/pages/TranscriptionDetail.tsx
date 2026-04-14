@@ -99,6 +99,20 @@ export function TranscriptionDetail() {
   // Share modal
   const [showShareModal, setShowShareModal] = useState(false);
 
+  // Export dropdown
+  const [showExportMenu, setShowExportMenu] = useState(false);
+  const exportMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (exportMenuRef.current && !exportMenuRef.current.contains(e.target as Node)) {
+        setShowExportMenu(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
   // Derived permission
   const permissionLevel = transcription?.permission_level || 'owner';
   const canEdit = permissionLevel === 'owner' || permissionLevel === 'write';
@@ -530,20 +544,6 @@ export function TranscriptionDetail() {
     });
     downloadFile(lines.join('\n'), `${baseName}.txt`, 'text/plain');
   };
-
-  // ── Export dropdown ──
-  const [showExportMenu, setShowExportMenu] = useState(false);
-  const exportMenuRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (exportMenuRef.current && !exportMenuRef.current.contains(e.target as Node)) {
-        setShowExportMenu(false);
-      }
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, []);
 
   const handleExport = (fmt: string) => {
     setShowExportMenu(false);
