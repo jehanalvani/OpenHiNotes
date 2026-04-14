@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, status, Depends, Query, Request
+from fastapi import APIRouter, HTTPException, status, Depends, Query, Request, Body
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, or_, func
 from app.database import get_db
@@ -320,3 +320,35 @@ async def generate_reset_token(
         reset_link=reset_link,
         expires_in_hours=24,
     )
+
+
+# ── Recording aliases ─────────────────────────────────────────────────────────
+
+@router.get("/me/recording-aliases", response_model=dict)
+async def get_recording_aliases(
+    current_user: User = Depends(get_current_user),
+):
+    """Return the current user's recording aliases (filename → display name)."""
+    return current_user.recording_aliases or {}
+
+
+@router.put("/me/recording-aliases", response_model=dict)
+async def update_recording_aliases(
+    aliases: dict = Body(...),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Replace the current user's recording aliases map."""
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.info(f"PUT recording-aliases: received {aliases} for user {current_user.id}")
+    from sqlalchemy.orm.attributes import flag_modified
+    # Re-fetch within this session to ensure the ORM tracks it properly
+    result = await db.execute(select(User).where(User.id == current_user.id))
+    user = result.scalars().first()
+    user.recording_aliases = dict(aliases)
+    flag_modified(user, "recording_aliases")
+    await db.commit()
+    await db.refresh(user)
+    logger.info(f"PUT recording-aliases: after commit {user.recording_aliases}")
+    return user.recording_aliases or {}

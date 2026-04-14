@@ -278,6 +278,7 @@ class TranscriptionQueue:
                 user_id = transcription.user_id
                 stored_filename = transcription.filename
                 language = transcription.language
+                recording_type = transcription.recording_type
 
             # Notify: processing started
             await self._notify(transcription_id, {
@@ -324,8 +325,10 @@ class TranscriptionQueue:
 
             try:
                 async with AsyncSessionLocal() as db:
+                    from app.models.transcription import RecordingType
+                    should_diarize = recording_type != RecordingType.whisper
                     voxhub_response = await TranscriptionService.transcribe_with_voxhub(
-                        file_path, language=language, db=db,
+                        file_path, language=language, diarize=should_diarize, db=db,
                         on_progress=on_progress, on_job_submitted=on_job_submitted,
                     )
 

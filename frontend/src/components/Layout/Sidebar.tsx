@@ -9,14 +9,42 @@ import {
   Shield,
   ChevronLeft,
   ChevronRight,
+  X,
 } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect } from 'react';
 import { useAuthStore } from '@/store/useAuthStore';
+import { useLayoutStore } from '@/store/useLayoutStore';
 
 export function Sidebar() {
-  const [isCollapsed, setIsCollapsed] = useState(false);
+  const { sidebarCollapsed, setSidebarCollapsed, mobileMenuOpen, setMobileMenuOpen } = useLayoutStore();
   const location = useLocation();
   const { user } = useAuthStore();
+
+  // Close mobile menu on route change
+  useEffect(() => {
+    setMobileMenuOpen(false);
+  }, [location.pathname]);
+
+  // Close mobile menu on Escape key
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && mobileMenuOpen) {
+        setMobileMenuOpen(false);
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [mobileMenuOpen]);
+
+  // Prevent body scroll when mobile menu is open
+  useEffect(() => {
+    if (mobileMenuOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => { document.body.style.overflow = ''; };
+  }, [mobileMenuOpen]);
 
   const isActive = (path: string) => {
     return location.pathname === path || location.pathname.startsWith(path + '/');
@@ -35,15 +63,11 @@ export function Sidebar() {
     { path: '/admin', label: 'Administration', icon: Shield },
   ] : [];
 
-  return (
-    <div
-      className={`flex flex-col bg-white/80 dark:bg-gray-800/80 backdrop-blur-xl border-r border-gray-200/60 dark:border-gray-700/40 transition-all duration-300 ease-in-out ${
-        isCollapsed ? 'w-20' : 'w-64'
-      }`}
-    >
+  const sidebarContent = (
+    <>
       {/* Brand / Logo area */}
       <div className="flex items-center justify-between p-4 border-b border-gray-200/60 dark:border-gray-700/40">
-        {!isCollapsed ? (
+        {!sidebarCollapsed || mobileMenuOpen ? (
           <div className="flex items-center gap-2.5 min-w-0">
             <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-gradient-to-br from-primary-500 to-primary-700 flex items-center justify-center shadow-md shadow-primary-500/20">
               <span className="text-white font-bold text-sm">OH</span>
@@ -57,14 +81,23 @@ export function Sidebar() {
             <span className="text-white font-bold text-sm">OH</span>
           </div>
         )}
+        {/* Close button on mobile, collapse toggle on desktop */}
         <button
-          onClick={() => setIsCollapsed(!isCollapsed)}
+          onClick={() => {
+            if (mobileMenuOpen) {
+              setMobileMenuOpen(false);
+            } else {
+              setSidebarCollapsed(!sidebarCollapsed);
+            }
+          }}
           className={`p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700/60 rounded-lg transition-all duration-200 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 ${
-            isCollapsed ? 'mx-auto mt-2' : ''
-          }`}
-          aria-label={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            sidebarCollapsed && !mobileMenuOpen ? 'mx-auto mt-2' : ''
+          } ${mobileMenuOpen ? '' : 'hidden md:block'}`}
+          aria-label={mobileMenuOpen ? 'Close menu' : sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
         >
-          {isCollapsed ? (
+          {mobileMenuOpen ? (
+            <X className="w-5 h-5" />
+          ) : sidebarCollapsed ? (
             <ChevronRight className="w-4 h-4" />
           ) : (
             <ChevronLeft className="w-4 h-4" />
@@ -76,6 +109,7 @@ export function Sidebar() {
       <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
         {navItems.map(({ path, label, icon: Icon }) => {
           const active = isActive(path);
+          const showLabel = !sidebarCollapsed || mobileMenuOpen;
           return (
             <Link
               key={path}
@@ -86,7 +120,6 @@ export function Sidebar() {
                   : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100/80 dark:hover:bg-gray-700/50 hover:text-gray-900 dark:hover:text-gray-200'
               }`}
             >
-              {/* Active indicator bar */}
               {active && (
                 <span className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-5 rounded-r-full bg-primary-500 dark:bg-primary-400" />
               )}
@@ -95,7 +128,7 @@ export function Sidebar() {
                   active ? 'text-primary-600 dark:text-primary-400' : ''
                 }`}
               />
-              {!isCollapsed && (
+              {showLabel && (
                 <span className={`text-sm font-medium transition-colors duration-200 ${active ? 'font-semibold' : ''}`}>
                   {label}
                 </span>
@@ -111,7 +144,7 @@ export function Sidebar() {
               <div className="absolute inset-0 flex items-center">
                 <div className="w-full border-t border-gray-200/80 dark:border-gray-700/60" />
               </div>
-              {!isCollapsed && (
+              {(!sidebarCollapsed || mobileMenuOpen) && (
                 <div className="relative flex justify-start pl-3">
                   <span className="bg-white dark:bg-gray-800 pr-2 text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
                     Admin
@@ -121,6 +154,7 @@ export function Sidebar() {
             </div>
             {adminItems.map(({ path, label, icon: Icon }) => {
               const active = isActive(path);
+              const showLabel = !sidebarCollapsed || mobileMenuOpen;
               return (
                 <Link
                   key={path}
@@ -139,7 +173,7 @@ export function Sidebar() {
                       active ? 'text-primary-600 dark:text-primary-400' : ''
                     }`}
                   />
-                  {!isCollapsed && (
+                  {showLabel && (
                     <span className={`text-sm font-medium transition-colors duration-200 ${active ? 'font-semibold' : ''}`}>
                       {label}
                     </span>
@@ -150,6 +184,34 @@ export function Sidebar() {
           </>
         )}
       </nav>
-    </div>
+    </>
+  );
+
+  return (
+    <>
+      {/* Desktop sidebar — hidden on mobile */}
+      <div
+        className={`hidden md:flex flex-col bg-white/80 dark:bg-gray-800/80 backdrop-blur-xl border-r border-gray-200/60 dark:border-gray-700/40 transition-all duration-300 ease-in-out ${
+          sidebarCollapsed ? 'w-20' : 'w-64'
+        }`}
+      >
+        {sidebarContent}
+      </div>
+
+      {/* Mobile overlay + drawer */}
+      {mobileMenuOpen && (
+        <div
+          className="md:hidden fixed inset-0 z-50 bg-black/40 backdrop-blur-sm"
+          onClick={() => setMobileMenuOpen(false)}
+        >
+          <div
+            className="absolute left-0 top-0 bottom-0 w-72 bg-white dark:bg-gray-800 shadow-2xl flex flex-col animate-slide-in-left"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {sidebarContent}
+          </div>
+        </div>
+      )}
+    </>
   );
 }

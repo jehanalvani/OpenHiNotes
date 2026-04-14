@@ -1,6 +1,7 @@
 """Default summary templates shipped with OpenHiNotes.
 
-Each template is a dict with: name, category, description, prompt_template.
+Each template is a dict with: name, category, description, prompt_template,
+and optionally target_type ("record" | "whisper" | "both", default "both").
 The prompt_template uses {{transcript}} as placeholder and follows a hybrid style:
 short instruction + required Markdown sections — the LLM infers the rest.
 """
@@ -12,6 +13,7 @@ DEFAULT_TEMPLATES: list[dict] = [
     {
         "name": "General Meeting",
         "category": "General",
+        "target_type": "record",
         "description": "All-purpose meeting summary with outline, key decisions, and action items.",
         "prompt_template": (
             "Summarize the following meeting transcript.\n\n"
@@ -31,6 +33,7 @@ DEFAULT_TEMPLATES: list[dict] = [
     {
         "name": "Weekly Team Meeting",
         "category": "General",
+        "target_type": "record",
         "description": "Capture milestones, project updates, goals, and team feedback from weekly syncs.",
         "prompt_template": (
             "Summarize this weekly team meeting transcript.\n\n"
@@ -53,6 +56,7 @@ DEFAULT_TEMPLATES: list[dict] = [
     {
         "name": "Daily Standup",
         "category": "General",
+        "target_type": "record",
         "description": "Quick daily updates: done, planned, and blockers per team member.",
         "prompt_template": (
             "Summarize this daily standup meeting.\n\n"
@@ -77,6 +81,7 @@ DEFAULT_TEMPLATES: list[dict] = [
     {
         "name": "1-to-1 Meeting",
         "category": "HR",
+        "target_type": "record",
         "description": "Captures priorities, achievements, challenges, feedback, and growth goals from 1-on-1s.",
         "prompt_template": (
             "Summarize this 1-on-1 meeting transcript.\n\n"
@@ -101,6 +106,7 @@ DEFAULT_TEMPLATES: list[dict] = [
     {
         "name": "Job Interview",
         "category": "HR",
+        "target_type": "record",
         "description": "Structured interview summary: background, experience, strengths, Q&A, and next steps.",
         "prompt_template": (
             "Summarize this job interview transcript.\n\n"
@@ -128,6 +134,7 @@ DEFAULT_TEMPLATES: list[dict] = [
     {
         "name": "Business Call",
         "category": "Client & Sales",
+        "target_type": "record",
         "description": "Captures call discussion, agreements, unresolved issues, and next arrangements.",
         "prompt_template": (
             "Summarize this business call transcript.\n\n"
@@ -150,6 +157,7 @@ DEFAULT_TEMPLATES: list[dict] = [
     {
         "name": "Client Meeting",
         "category": "Client & Sales",
+        "target_type": "record",
         "description": "Summarizes client discussions, feedback, action items, and follow-ups.",
         "prompt_template": (
             "Summarize this client meeting transcript.\n\n"
@@ -171,6 +179,7 @@ DEFAULT_TEMPLATES: list[dict] = [
     {
         "name": "Sales Call",
         "category": "Client & Sales",
+        "target_type": "record",
         "description": "Captures client needs, pitch messages, reactions, and follow-up plan for sales reps.",
         "prompt_template": (
             "Summarize this sales call transcript.\n\n"
@@ -191,6 +200,7 @@ DEFAULT_TEMPLATES: list[dict] = [
     {
         "name": "Customer Onboarding",
         "category": "Client & Sales",
+        "target_type": "record",
         "description": "Tracks onboarding progress, goals, risks, and next steps for new customers.",
         "prompt_template": (
             "Summarize this customer onboarding meeting transcript.\n\n"
@@ -214,6 +224,7 @@ DEFAULT_TEMPLATES: list[dict] = [
     {
         "name": "Project Kickoff",
         "category": "Project Management",
+        "target_type": "record",
         "description": "Outlines project goals, scope, roles, timeline, risks, and action plan.",
         "prompt_template": (
             "Summarize this project kickoff meeting transcript.\n\n"
@@ -239,6 +250,7 @@ DEFAULT_TEMPLATES: list[dict] = [
     {
         "name": "Project Status Update",
         "category": "Project Management",
+        "target_type": "record",
         "description": "Regular project meeting: status, completed/pending tasks, blockers, and actions.",
         "prompt_template": (
             "Summarize this project status meeting transcript.\n\n"
@@ -263,6 +275,7 @@ DEFAULT_TEMPLATES: list[dict] = [
     {
         "name": "Sprint Planning",
         "category": "Project Management",
+        "target_type": "record",
         "description": "Sprint goals, backlog review, capacity, and task assignments for agile teams.",
         "prompt_template": (
             "Summarize this sprint planning meeting transcript.\n\n"
@@ -287,6 +300,7 @@ DEFAULT_TEMPLATES: list[dict] = [
     {
         "name": "Retrospective",
         "category": "Project Management",
+        "target_type": "record",
         "description": "What went well, what didn't, improvements, and action items from retros.",
         "prompt_template": (
             "Summarize this retrospective meeting transcript.\n\n"
@@ -310,6 +324,7 @@ DEFAULT_TEMPLATES: list[dict] = [
     {
         "name": "Stakeholder Meeting",
         "category": "Leadership",
+        "target_type": "record",
         "description": "High-level review: business updates, financials, metrics, decisions, and next steps.",
         "prompt_template": (
             "Summarize this stakeholder meeting transcript.\n\n"
@@ -336,6 +351,7 @@ DEFAULT_TEMPLATES: list[dict] = [
     {
         "name": "Board Meeting",
         "category": "Leadership",
+        "target_type": "record",
         "description": "Executive-level: agenda items, KPIs, decisions, and strategic next steps.",
         "prompt_template": (
             "Summarize this board meeting transcript.\n\n"
@@ -358,6 +374,7 @@ DEFAULT_TEMPLATES: list[dict] = [
     {
         "name": "All Hands Meeting",
         "category": "Leadership",
+        "target_type": "record",
         "description": "Company-wide updates, announcements, key decisions, and Q&A highlights.",
         "prompt_template": (
             "Summarize this all-hands meeting transcript.\n\n"
@@ -381,6 +398,7 @@ DEFAULT_TEMPLATES: list[dict] = [
     {
         "name": "Pentest Kickoff",
         "category": "Security",
+        "target_type": "record",
         "description": "Pentest engagement kickoff: scope, rules of engagement, targets, timeline, and contacts.",
         "prompt_template": (
             "Summarize this penetration testing kickoff meeting transcript.\n\n"
@@ -409,6 +427,7 @@ DEFAULT_TEMPLATES: list[dict] = [
     {
         "name": "Pentest Weekly Status",
         "category": "Security",
+        "target_type": "record",
         "description": "Weekly pentest progress: findings so far, blockers, risk highlights, and next targets.",
         "prompt_template": (
             "Summarize this weekly pentest status meeting transcript.\n\n"
@@ -432,6 +451,7 @@ DEFAULT_TEMPLATES: list[dict] = [
     {
         "name": "Pentest Debrief",
         "category": "Security",
+        "target_type": "record",
         "description": "Post-engagement debrief: key findings, risk summary, remediation priorities, and next steps.",
         "prompt_template": (
             "Summarize this penetration test debrief meeting transcript.\n\n"
@@ -457,6 +477,7 @@ DEFAULT_TEMPLATES: list[dict] = [
     {
         "name": "Security Incident Review",
         "category": "Security",
+        "target_type": "record",
         "description": "Post-incident review: timeline, root cause, impact, lessons learned, and remediation.",
         "prompt_template": (
             "Summarize this security incident review meeting transcript.\n\n"
@@ -484,6 +505,7 @@ DEFAULT_TEMPLATES: list[dict] = [
     {
         "name": "Brainstorming Session",
         "category": "General",
+        "target_type": "record",
         "description": "Captures ideas generated, key themes, and actionable takeaways from brainstorms.",
         "prompt_template": (
             "Summarize this brainstorming session transcript.\n\n"
@@ -508,6 +530,7 @@ DEFAULT_TEMPLATES: list[dict] = [
     {
         "name": "Online Course / Lecture",
         "category": "Education",
+        "target_type": "record",
         "description": "Summarizes course sessions: topics, key concepts, examples, and assignments.",
         "prompt_template": (
             "Summarize this online course or lecture recording transcript.\n\n"
@@ -532,6 +555,7 @@ DEFAULT_TEMPLATES: list[dict] = [
     {
         "name": "Training Session",
         "category": "Education",
+        "target_type": "record",
         "description": "Business training summary: objectives, content, skills acquired, and follow-up actions.",
         "prompt_template": (
             "Summarize this training session transcript.\n\n"
@@ -555,6 +579,7 @@ DEFAULT_TEMPLATES: list[dict] = [
     {
         "name": "Podcast Summary",
         "category": "Media",
+        "target_type": "record",
         "description": "Episode overview with segments, key moments, guest insights, and conclusion.",
         "prompt_template": (
             "Summarize this podcast episode transcript.\n\n"
@@ -575,6 +600,7 @@ DEFAULT_TEMPLATES: list[dict] = [
     {
         "name": "YouTube Video Summary",
         "category": "Media",
+        "target_type": "record",
         "description": "Structured notes with chapters, key points, and standout quotes.",
         "prompt_template": (
             "Summarize this YouTube video transcript.\n\n"
@@ -598,6 +624,7 @@ DEFAULT_TEMPLATES: list[dict] = [
     {
         "name": "SOAP Note",
         "category": "Healthcare",
+        "target_type": "record",
         "description": "Clinical SOAP format: Subjective, Objective, Assessment, Plan.",
         "prompt_template": (
             "Summarize this clinical consultation transcript using the SOAP format.\n\n"
@@ -622,6 +649,7 @@ DEFAULT_TEMPLATES: list[dict] = [
     {
         "name": "Healthcare Consultation",
         "category": "Healthcare",
+        "target_type": "record",
         "description": "Doctor-patient interaction: concerns, findings, advice, and follow-up.",
         "prompt_template": (
             "Summarize this healthcare consultation transcript.\n\n"
@@ -647,6 +675,7 @@ DEFAULT_TEMPLATES: list[dict] = [
     {
         "name": "User Interview",
         "category": "UX & Research",
+        "target_type": "record",
         "description": "UX research: user background, usage behavior, pain points, and insights.",
         "prompt_template": (
             "Summarize this user interview transcript.\n\n"
@@ -670,6 +699,7 @@ DEFAULT_TEMPLATES: list[dict] = [
     {
         "name": "Pipeline Review (MEDDIC)",
         "category": "Client & Sales",
+        "target_type": "record",
         "description": "Sales pipeline review using MEDDIC framework: Metrics, Economic Buyer, Decision Criteria, etc.",
         "prompt_template": (
             "Summarize this pipeline review meeting transcript using the MEDDIC framework.\n\n"
@@ -699,6 +729,7 @@ DEFAULT_TEMPLATES: list[dict] = [
     {
         "name": "Personal Call",
         "category": "Personal",
+        "target_type": "record",
         "description": "Casual call summary: topics discussed, plans made, and follow-ups.",
         "prompt_template": (
             "Summarize this personal/casual call transcript in a friendly tone.\n\n"
@@ -742,6 +773,7 @@ DEFAULT_TEMPLATES: list[dict] = [
     {
         "name": "Pentest - Scoping Call",
         "category": "Security",
+        "target_type": "record",
         "description": "Capture pentest engagement scope: targets, constraints, rules of engagement, and timeline.",
         "prompt_template": (
             "Summarize this penetration-testing scoping call transcript.\n\n"
@@ -773,6 +805,76 @@ DEFAULT_TEMPLATES: list[dict] = [
             "Potential risks raised during the call (uptime, compliance, data sensitivity).\n\n"
             "## 🎯 Next Steps\n"
             "| Action | Owner | Deadline |\n|---|---|---|\n\n"
+            "{{transcript}}"
+        ),
+    },
+
+    # ──────────────────────────────────────────────
+    # WHISPER-SPECIFIC TEMPLATES
+    # ──────────────────────────────────────────────
+    {
+        "name": "Quick Idea Summary",
+        "category": "General",
+        "target_type": "whisper",
+        "description": "Distill a voice memo into a concise idea summary with next steps.",
+        "prompt_template": (
+            "The following is a transcription of a short voice memo. "
+            "Clean it up and present it as a concise, well-structured note.\n\n"
+            "## 💡 Idea\n"
+            "One-paragraph summary of the core idea or thought.\n\n"
+            "## 🔑 Key Points\n"
+            "Bullet list of the main points mentioned.\n\n"
+            "## 🎯 Next Steps\n"
+            "- [ ] Actionable follow-ups extracted from the memo.\n\n"
+            "{{transcript}}"
+        ),
+    },
+    {
+        "name": "Shopping / Grocery List",
+        "category": "General",
+        "target_type": "whisper",
+        "description": "Extract items from a spoken shopping or grocery list.",
+        "prompt_template": (
+            "The following is a transcription of a voice memo listing items to buy. "
+            "Extract and organize the items into a clean checklist.\n\n"
+            "## 🛒 Shopping List\n"
+            "Group items by category (produce, dairy, meat, pantry, household, etc.). "
+            "Use checkboxes:\n"
+            "- [ ] Item (quantity if mentioned)\n\n"
+            "If any notes or preferences were mentioned (brand, store, etc.), "
+            "add them as sub-bullets under the relevant item.\n\n"
+            "{{transcript}}"
+        ),
+    },
+    {
+        "name": "Action Items Checklist",
+        "category": "General",
+        "target_type": "whisper",
+        "description": "Turn a rambling voice memo into a prioritized task list.",
+        "prompt_template": (
+            "The following is a transcription of a voice memo about tasks or things to do. "
+            "Extract every actionable item and present them as a checklist.\n\n"
+            "## ✅ Action Items\n"
+            "Use checkboxes, ordered by priority (most urgent first):\n"
+            "- [ ] Task description (deadline or context if mentioned)\n\n"
+            "## 📝 Additional Notes\n"
+            "Any context, reminders, or non-actionable thoughts worth keeping.\n\n"
+            "{{transcript}}"
+        ),
+    },
+    {
+        "name": "Voice Memo to Clean Notes",
+        "category": "General",
+        "target_type": "whisper",
+        "description": "Transform a raw voice memo into polished, readable notes.",
+        "prompt_template": (
+            "The following is a raw transcription of a voice memo. "
+            "Rewrite it as clean, well-organized notes. "
+            "Fix grammar, remove filler words, and structure the content logically.\n\n"
+            "Use appropriate headings, bullet points, and emphasis. "
+            "Preserve all meaningful content but make it concise and scannable. "
+            "If the memo contains any tasks or deadlines, format them as checkboxes:\n"
+            "- [ ] Task\n\n"
             "{{transcript}}"
         ),
     },

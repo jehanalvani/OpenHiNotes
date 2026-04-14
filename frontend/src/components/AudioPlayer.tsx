@@ -127,13 +127,13 @@ export function AudioPlayer({ src, fileName }: AudioPlayerProps) {
           className="flex-1 h-2 bg-gray-300 dark:bg-gray-600 rounded-lg appearance-none cursor-pointer"
         />
 
-        <span className="text-xs text-gray-600 dark:text-gray-400 w-12 text-right">
+        <span className="text-xs text-gray-600 dark:text-gray-400 whitespace-nowrap flex-shrink-0">
           {formatTime(currentTime)} / {formatTime(duration)}
         </span>
       </div>
 
       <div className="flex items-center gap-2">
-        <Volume2 className="w-4 h-4 text-gray-600 dark:text-gray-400" />
+        <Volume2 className="w-4 h-4 text-gray-600 dark:text-gray-400 flex-shrink-0" />
         <input
           type="range"
           min="0"

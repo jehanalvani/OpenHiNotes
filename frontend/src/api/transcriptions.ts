@@ -142,10 +142,11 @@ export const transcriptionsApi = {
     limit: number = 20,
     sort: 'newest' | 'oldest' = 'newest',
     filter: 'all' | 'mine' | 'shared' = 'all',
+    recordingType?: 'record' | 'whisper',
   ): Promise<PaginatedResponse<Transcription>> {
-    return apiClient.get<PaginatedResponse<Transcription>>(
-      `/transcriptions?skip=${skip}&limit=${limit}&sort=${sort}&filter=${filter}`
-    );
+    let url = `/transcriptions?skip=${skip}&limit=${limit}&sort=${sort}&filter=${filter}`;
+    if (recordingType) url += `&recording_type=${recordingType}`;
+    return apiClient.get<PaginatedResponse<Transcription>>(url);
   },
 
   async getTranscription(id: string): Promise<Transcription> {
@@ -224,7 +225,8 @@ export const transcriptionsApi = {
     language: string = 'auto',
     keepAudio: boolean = false,
     autoSummarize: boolean = false,
-    templateId?: string
+    templateId?: string,
+    recordingType?: 'record' | 'whisper',
   ): Promise<Transcription> {
     const extraFields: Record<string, string> = {
       language,
@@ -233,6 +235,9 @@ export const transcriptionsApi = {
     };
     if (templateId) {
       extraFields.template_id = templateId;
+    }
+    if (recordingType) {
+      extraFields.recording_type = recordingType;
     }
     return apiClient.uploadFile<Transcription>(
       '/transcriptions/queue',

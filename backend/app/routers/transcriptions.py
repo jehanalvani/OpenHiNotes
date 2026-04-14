@@ -3,6 +3,7 @@ import json
 import os
 import re
 import uuid
+from typing import Optional
 from pathlib import Path
 
 from fastapi import (
@@ -298,10 +299,12 @@ async def list_transcriptions(
     limit: int = Query(50, ge=1, le=200),
     sort: str = Query("newest", regex="^(newest|oldest)$"),
     filter: str = Query("all", regex="^(all|mine|shared)$"),
+    recording_type: Optional[str] = Query(None, regex="^(record|whisper)$"),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """List transcriptions. Supports filter: all (mine + shared), mine, shared."""
+    """List transcriptions. Supports filter: all (mine + shared), mine, shared.
+    Optional recording_type filter: record, whisper."""
     order = Transcription.created_at.desc() if sort == "newest" else Transcription.created_at.asc()
 
     if current_user.role == UserRole.admin:
@@ -357,6 +360,12 @@ async def list_transcriptions(
                 .select_from(Transcription)
                 .where(Transcription.id.in_(accessible_ids))
             )
+
+    # Apply recording_type filter if specified
+    if recording_type:
+        type_condition = Transcription.recording_type == recording_type
+        query = query.where(type_condition)
+        count_query = count_query.where(type_condition)
 
     # Execute queries
     total = await db.scalar(count_query)
@@ -423,11 +432,13 @@ async def queue_transcription(
     keep_audio: bool = Form(False),
     auto_summarize: bool = Form(False),
     template_id: uuid.UUID = Form(None),
+    recording_type: str = Form(None),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Upload audio file and add transcription to the background queue.
-    Returns immediately with the transcription ID and queue position."""
+    Returns immediately with the transcription ID and queue position.
+    Optional recording_type overrides auto-detection (for web uploads)."""
     # Enforce admin keep_audio setting
     if keep_audio:
         from app.models.app_settings import AppSetting
@@ -452,10 +463,18 @@ async def queue_transcription(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Failed to save file: {str(e)}")
 
     # Create transcription record with pending status
+    from app.services.transcription import detect_recording_type
+    from app.models.transcription import RecordingType as RT
+    if recording_type in ("record", "whisper"):
+        rec_type = RT(recording_type)
+    else:
+        rec_type = detect_recording_type(original_filename)
+
     transcription = Transcription(
         user_id=current_user.id,
         filename=stored_filename,
         original_filename=original_filename,
+        recording_type=rec_type,
         language=language,
         status=TranscriptionStatus.pending,
         keep_audio=keep_audio,

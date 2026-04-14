@@ -55,11 +55,14 @@ export interface Collection {
   shared_by?: string | null;
 }
 
+export type RecordingType = 'record' | 'whisper';
+
 export interface Transcription {
   id: string;
   user_id: string;
   filename: string;
   original_filename: string;
+  recording_type: RecordingType;
   title: string | null;
   collection_id: string | null;
   audio_duration: number | null;
@@ -132,12 +135,15 @@ export interface SharedWithMeItem {
   shared_at: string;
 }
 
+export type TemplateTargetType = 'record' | 'whisper' | 'both';
+
 export interface SummaryTemplate {
   id: string;
   name: string;
   description: string;
   prompt_template: string;
   category: string | null;
+  target_type: TemplateTargetType;
   is_active: boolean;
   is_default: boolean;
   created_at: string;
