@@ -50,6 +50,10 @@ OpenHiNotes does **not** bundle a reverse proxy. The `frontend` container joins 
 
 ## Quick Start
 
+> **Just want to try it out?** See [docs/STANDALONE_QUICKSTART.md](docs/STANDALONE_QUICKSTART.md) for a one-command setup with a bundled self-signed Caddy — no external reverse proxy needed.
+
+The instructions below assume you already run a reverse proxy on your server (Caddy, Nginx, Traefik, etc.) and want to integrate OpenHiNotes into it.
+
 ### Prerequisites
 
 - Docker and Docker Compose
