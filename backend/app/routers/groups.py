@@ -128,14 +128,23 @@ async def create_group(
                 detail="Group creation is restricted to administrators",
             )
 
-    # Name must be globally unique — return friendly 409 instead of DB IntegrityError
+    # Normalize name: strip whitespace, collapse internal runs, reject if empty
+    name = " ".join((group_create.name or "").split())
+    if not name:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Group name cannot be empty",
+        )
+
+    # Globally unique (case-insensitive) — return friendly 409 instead of DB IntegrityError
+    from sqlalchemy import func
     name_clash = await db.execute(
-        select(UserGroup).where(UserGroup.name == group_create.name)
+        select(UserGroup).where(func.lower(UserGroup.name) == name.lower())
     )
     if name_clash.scalars().first():
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail=f"A group named '{group_create.name}' already exists",
+            detail=f"A group named '{name}' already exists",
         )
 
     policy = SharingPolicy.creator_only
@@ -143,7 +152,7 @@ async def create_group(
         policy = SharingPolicy(group_create.sharing_policy)
 
     group = UserGroup(
-        name=group_create.name,
+        name=name,
         description=group_create.description,
         created_by=current_user.id,
         owner_id=current_user.id,
@@ -241,20 +250,27 @@ async def update_group(
     if not _is_group_owner(group, current_user):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only the group owner can edit this group")
 
-    if group_update.name is not None and group_update.name != group.name:
-        # Name must be globally unique
-        name_clash = await db.execute(
-            select(UserGroup).where(
-                UserGroup.name == group_update.name,
-                UserGroup.id != group_id,
-            )
-        )
-        if name_clash.scalars().first():
+    if group_update.name is not None:
+        new_name = " ".join(group_update.name.split())
+        if not new_name:
             raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail=f"A group named '{group_update.name}' already exists",
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Group name cannot be empty",
             )
-        group.name = group_update.name
+        if new_name.lower() != group.name.lower():
+            from sqlalchemy import func
+            name_clash = await db.execute(
+                select(UserGroup).where(
+                    func.lower(UserGroup.name) == new_name.lower(),
+                    UserGroup.id != group_id,
+                )
+            )
+            if name_clash.scalars().first():
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=f"A group named '{new_name}' already exists",
+                )
+        group.name = new_name
     if group_update.description is not None:
         group.description = group_update.description
     if group_update.sharing_policy is not None:

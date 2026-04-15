@@ -1,8 +1,9 @@
-"""Make user_groups.name globally unique.
+"""Make user_groups.name globally unique (case-insensitive, whitespace-trimmed).
 
-Before applying the UNIQUE constraint, rename any existing duplicates
-by appending " (2)", " (3)", ... so the migration succeeds on databases
-that already have duplicates.
+Normalizes existing names (trim, collapse whitespace), renames any
+remaining case-insensitive duplicates with a " (N)" suffix, then
+applies a unique index on lower(name) so future inserts can't collide
+on case or trailing spaces.
 
 Revision ID: 021_user_group_name_unique
 Revises: 020_user_group_owner_policy
@@ -18,12 +19,18 @@ depends_on = None
 
 
 def upgrade() -> None:
-    # Rename duplicates by created_at order: first one keeps the name,
-    # subsequent ones get " (2)", " (3)", ... suffix
+    # 1. Normalize: trim and collapse internal whitespace runs
+    op.execute(r"""
+        UPDATE user_groups
+        SET name = regexp_replace(btrim(name), '\s+', ' ', 'g')
+        WHERE name <> regexp_replace(btrim(name), '\s+', ' ', 'g')
+    """)
+
+    # 2. Rename case-insensitive duplicates with " (N)" suffix
     op.execute("""
         WITH ranked AS (
             SELECT id, name,
-                   ROW_NUMBER() OVER (PARTITION BY name ORDER BY created_at, id) AS rn
+                   ROW_NUMBER() OVER (PARTITION BY lower(name) ORDER BY created_at, id) AS rn
             FROM user_groups
         )
         UPDATE user_groups g
@@ -32,8 +39,9 @@ def upgrade() -> None:
         WHERE g.id = ranked.id AND ranked.rn > 1
     """)
 
-    op.create_unique_constraint("uq_user_groups_name", "user_groups", ["name"])
+    # 3. Functional unique index — case-insensitive
+    op.execute("CREATE UNIQUE INDEX uq_user_groups_name_lower ON user_groups (lower(name))")
 
 
 def downgrade() -> None:
-    op.drop_constraint("uq_user_groups_name", "user_groups", type_="unique")
+    op.execute("DROP INDEX IF EXISTS uq_user_groups_name_lower")
