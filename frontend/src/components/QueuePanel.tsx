@@ -33,12 +33,16 @@ function getStageLabel(stage: string | null | undefined): string {
       return 'Waiting for server...';
     case 'loading':
       return 'Loading model...';
+    case 'detecting_language':
+      return 'Detecting language...';
     case 'vad':
       return 'Detecting speech...';
-    case 'transcribing':
-      return 'Transcribing...';
     case 'diarizing':
       return 'Identifying speakers...';
+    case 'transcribing':
+      return 'Transcribing...';
+    case 'embeddings':
+      return 'Extracting voice prints...';
     case 'aligning':
       return 'Aligning words...';
     default:
