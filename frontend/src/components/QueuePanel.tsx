@@ -38,7 +38,7 @@ function getStageLabel(stage: string | null | undefined): string {
     case 'vad':
       return 'Detecting speech...';
     case 'diarizing':
-      return 'Identifying speakers...';
+      return 'Identifying speakers (may take a while)...';
     case 'transcribing':
       return 'Transcribing...';
     case 'embeddings':
