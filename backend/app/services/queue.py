@@ -468,6 +468,12 @@ class TranscriptionQueue:
                         if transcription.status == TranscriptionStatus.cancelled:
                             logger.info("Transcription %s was cancelled during processing", transcription_id)
                             return
+                        # Cancel the VoxHub job so it doesn't keep running as a ghost
+                        if transcription.voxhub_job_id:
+                            try:
+                                await TranscriptionService.cancel_voxhub_job(transcription.voxhub_job_id, db)
+                            except Exception as cancel_err:
+                                logger.warning("Failed to cancel VoxHub job %s: %s", transcription.voxhub_job_id, cancel_err)
                         transcription.status = TranscriptionStatus.failed
                         transcription.error_message = str(e)
                         transcription.completed_at = datetime.utcnow()
