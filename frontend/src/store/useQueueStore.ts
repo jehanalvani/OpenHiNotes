@@ -272,7 +272,7 @@ export const useQueueStore = create<QueueState>()((set, get) => ({
         }
       },
       () => {
-        // On error, mark as not streaming
+        // On error, mark as not streaming then retry after a delay
         set((s) => ({
           items: s.items.map((i) =>
             i.transcription.id === transcriptionId
@@ -280,6 +280,13 @@ export const useQueueStore = create<QueueState>()((set, get) => ({
               : i
           ),
         }));
+        setTimeout(() => {
+          const item = get().items.find((i) => i.transcription.id === transcriptionId);
+          if (item && !item.isStreaming &&
+              (item.transcription.status === 'queued' || item.transcription.status === 'processing')) {
+            get().startStreaming(transcriptionId);
+          }
+        }, 5000);
       }
     );
 
