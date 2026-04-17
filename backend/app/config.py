@@ -17,7 +17,7 @@ class Settings(BaseSettings):
     voxhub_api_key: str = ""
     voxhub_model: str = "large-v3"
     voxhub_job_mode: str = "false"
-    voxhub_vad_mode: str = "silero"
+    voxhub_vad_mode: str = "pyannote"
 
     # LLM API (OpenAI-compatible)
     llm_api_url: str = "http://localhost:11434/v1"

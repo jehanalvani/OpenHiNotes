@@ -135,7 +135,7 @@ class TranscriptionService:
 
         with open(file_path, "rb") as f:
             files = {"file": (Path(file_path).name, f, "audio/mpeg")}
-            vad_mode = cfg.get("vad_mode") or "silero"
+            vad_mode = cfg.get("vad_mode") or "pyannote"
             data = {
                 "model": cfg["model"],
                 "response_format": "verbose_json",
@@ -181,7 +181,7 @@ class TranscriptionService:
 
         with open(file_path, "rb") as f:
             files = {"file": (Path(file_path).name, f, "audio/mpeg")}
-            vad_mode = cfg.get("vad_mode") or "silero"
+            vad_mode = cfg.get("vad_mode") or "pyannote"
             data = {
                 "model": cfg["model"],
                 "diarize": "true" if diarize else "false",
