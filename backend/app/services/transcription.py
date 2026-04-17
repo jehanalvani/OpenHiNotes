@@ -210,21 +210,23 @@ class TranscriptionService:
 
         await _call_progress(on_progress, "processing", 0, "waiting")
 
-        # Step 2: Poll for completion
-        # Timeout resets whenever status or progress changes, so long-running
-        # transcriptions won't be killed as long as VoxHub is making progress.
+        # Step 2: Poll for completion.
+        # VoxHub reports progress=0/stage=null throughout the transcription
+        # phase regardless of how many segments it has processed, so a
+        # stale-progress timer produces false positives on long recordings.
+        # Instead we use a hard wall-clock cap; genuine connectivity failures
+        # are already handled by the httpx per-request timeout (30s) raising
+        # an exception that exits this loop immediately.
         poll_url = f"{base}/v1/audio/transcriptions/jobs/{job_id}"
-        stale_timeout = 3600  # 1 hour without any change = stale
+        max_total_seconds = 14400  # 4 hours absolute cap
         poll_interval = 3
         status = "unknown"
-        last_progress = -1.0
-        last_stage = None
-        seconds_since_change = 0
+        total_elapsed = 0
 
         async with httpx.AsyncClient(timeout=30.0, verify=settings.voxhub_ssl_verify) as client:
-            while seconds_since_change < stale_timeout:
+            while total_elapsed < max_total_seconds:
                 await asyncio.sleep(poll_interval)
-                seconds_since_change += poll_interval
+                total_elapsed += poll_interval
 
                 poll_resp = await client.get(poll_url, headers=headers)
                 if poll_resp.status_code != 200:
@@ -238,12 +240,6 @@ class TranscriptionService:
 
                 await _call_progress(on_progress, status, progress, stage)
 
-                # Reset stale timer on any change
-                if progress != last_progress or stage != last_stage or status != "processing":
-                    seconds_since_change = 0
-                    last_progress = progress
-                    last_stage = stage
-
                 if status == "completed":
                     break
                 elif status == "failed":
@@ -254,7 +250,7 @@ class TranscriptionService:
                 # Keep polling for "processing", "queued", etc.
 
         if status != "completed":
-            raise Exception(f"VoxHub job timed out (no progress for {stale_timeout}s, status={status})")
+            raise Exception(f"VoxHub job timed out after {max_total_seconds}s, status={status}")
 
         # Step 3: Fetch result with verbose_json to get segments & speaker labels
         result_url = f"{base}/v1/audio/transcriptions/jobs/{job_id}/result"
