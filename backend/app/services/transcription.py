@@ -214,7 +214,7 @@ class TranscriptionService:
         # Timeout resets whenever status or progress changes, so long-running
         # transcriptions won't be killed as long as VoxHub is making progress.
         poll_url = f"{base}/v1/audio/transcriptions/jobs/{job_id}"
-        stale_timeout = 300  # 5 minutes without any change = stale
+        stale_timeout = 3600  # 1 hour without any change = stale
         poll_interval = 3
         status = "unknown"
         last_progress = -1.0
